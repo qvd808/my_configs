@@ -74,4 +74,3 @@ vim.api.nvim_create_user_command("Retab",
 -- Python style
 vim.g.python_recommended_style = 0
 vim.o.expandtab = false
--- Adding for test

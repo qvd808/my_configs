@@ -1,5 +1,5 @@
 #!/bin/bash
 
-ln -rsf ./nvim/ ~/.config/
-ln -rsf ./tmux_configs/.tmux.conf ~/.tmux.conf
+ln -rsf $(pwd)/nvim/ ~/.config/
+ln -rsf $(pwd)/tmux_configs/.tmux.conf ~/.tmux.conf
 tmux source ~/.tmux.conf

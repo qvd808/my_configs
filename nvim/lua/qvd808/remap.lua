@@ -32,19 +32,19 @@ vim.keymap.set("n", "<c-m>", ":cp<CR>")
 -- Wrap word around
 vim.api.nvim_set_keymap(
 	"n",
-	'wi"',
+	'"iw',
 	'viw<esc>a"<esc>bi"<esc>',
 	{ noremap = true, silent = true, desc = "Word Surround Quotes" }
 )
 vim.api.nvim_set_keymap(
 	"n",
-	"wi(",
+	"(iw",
 	"viw<esc>a)<esc>bi(<esc>",
 	{ noremap = true, silent = true, desc = "Word Surround Quotes" }
 )
 vim.api.nvim_set_keymap(
 	"n",
-	"wi)",
+	")iw",
 	"viw<esc>a)<esc>bi(<esc>",
 	{ noremap = true, silent = true, desc = "Word Surround Quotes" }
 )

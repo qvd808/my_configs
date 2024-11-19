@@ -47,11 +47,35 @@ vim.opt.scrolloff = 20
 vim.opt.hlsearch = true
 
 -- Autocommand
+local function remote_clipboard(reg_content, filename)
+	-- Check if the file exist
+	local file_exists = vim.fn.filereadable(filename) == 1
+	if not file_exists then
+		vim.api.nvim_err_writeln(filename .. " does not exist")
+		return
+	end
+
+	--Write content to the file
+	local file = io.open(filename, "w")
+	if file then
+		file:write(reg_content)
+		file:close()
+		vim.api.nvim_echo({{
+			"Dumped to remote clipboard",
+			"Normal"
+		}}, true, {})
+	end
+end
 vim.api.nvim_create_autocmd("TextYankPost", {
 	desc = "Highlight when yanking text",
 	group = vim.api.nvim_create_augroup("kickstart-highlight-yank", { clear = true }),
 	callback = function()
 		vim.highlight.on_yank()
+		if vim.fn.exists('$SSH_CONNECTION') == 1 or vim.fn.exists('$SSH_TTY') == 1 then
+			local content = vim.fn.getreg('"')
+			local filename = vim.fn.expand("~/clip")
+			remote_clipboard(content, filename)
+		end
 	end,
 })
 

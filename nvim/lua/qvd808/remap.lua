@@ -163,3 +163,22 @@ vim.api.nvim_set_keymap(
 	"ciw{<esc>pa}<esc>",
 	{ noremap = true, silent = true, desc = "Word Surround Curly bracket" }
 )
+-- API for tmux split pane
+-- Remap :vs to trigger tmux vertical split
+vim.api.nvim_command('command! Vs lua TmuxSplit("v")')
+vim.api.nvim_set_keymap('n', ':vs', ':lua TmuxSplit("v")<CR>', { noremap = true, silent = true })
+vim.api.nvim_set_keymap('n', ':hs', ':lua TmuxSplit("h")<CR>', { noremap = true, silent = true })
+
+function TmuxSplit(type)
+  -- Check if we're inside a tmux session
+  if os.getenv('TMUX') then
+    if type == 'v' then
+      vim.fn.system('tmux split-window -h')
+    elseif type == 'h' then
+      vim.fn.system('tmux split-window -v')
+    end
+  else
+    -- If not in tmux, fall back to normal Neovim split
+    vim.cmd('vsp')
+  end
+end

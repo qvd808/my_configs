@@ -5,15 +5,15 @@ return {
       -- Automatically install LSPs and related tools to stdpath for Neovim
       { 'williamboman/mason.nvim', config = true }, -- NOTE: Must be loaded before dependants
       'williamboman/mason-lspconfig.nvim',
-      { 'folke/neodev.nvim',       opts = {} },     -- Use for configuring Lua LSP
+      { 'folke/neodev.nvim',       opts = {} },  -- Use for configuring Lua LSP
     },
     config = function()
       -- List of servers to install and configure
       local servers = {
-        lua_ls = {},   -- Lua
-        pyright = {},  -- Python
-        clangd = {},   -- C/C++
-        tsserver = {}, -- Typescript/Javascript
+        lua_ls = {}, -- Lua
+        pyright = {}, -- Python
+        clangd = {}, -- C/C++
+        ts_ls = {}, -- Typescript/Javascript
       }
 
       -- Setup capabilities

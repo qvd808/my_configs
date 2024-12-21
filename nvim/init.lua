@@ -10,7 +10,6 @@ require("qvd808")
 -- vim.keymap.set("v", "<space>x", ":lua<CR>")
 --
 --
--- vim.keymap.set("n", "<space><space>", ":Oil<CR>")
 --
 -- vim.api.nvim_create_autocmd("TextYankPost", {
 --   group = vim.api.nvim_create_augroup("kickstart-highlight-yank", { clear = true }),

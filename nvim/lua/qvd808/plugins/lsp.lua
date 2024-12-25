@@ -10,10 +10,12 @@ return {
     config = function()
       -- List of servers to install and configure
       local servers = {
-        -- lua_ls = {}, -- Lua
-        pyright = {}, -- Python
-        clangd = {},  -- C/C++
-        -- ts_ls = {}, -- Typescript/Javascript
+        lua_ls = {},      -- Lua
+        pyright = {},     -- Python
+        clangd = {},      -- C/C++
+        ts_ls = {},       -- Typescript/Javascript
+        tailwindcss = {}, --Tailwind
+        zls = {}          -- Zig
       }
 
       -- Setup capabilities

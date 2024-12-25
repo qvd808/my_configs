@@ -34,6 +34,7 @@ return {
       vim.keymap.set("n", "<space>bi", require("telescope.builtin").builtin)
       vim.keymap.set("n", "<space>rr", require("telescope.builtin").lsp_references)
       vim.keymap.set("n", "<space>fh", require("telescope.builtin").help_tags)
+      vim.keymap.set("n", "<space>gb", require("telescope.builtin").git_branches)
     end
   }
 }

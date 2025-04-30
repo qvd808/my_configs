@@ -52,4 +52,5 @@ end
 
 vim.api.nvim_create_user_command("Floaterminal", toggle_terminal, {})
 vim.keymap.set("t", "<C-x>", "<c-\\><c-n>")
-vim.keymap.set({ "n", "t" }, "<space>tt", ":Floaterminal<CR>")
+vim.keymap.set("n", "<space>tt", ":Floaterminal<CR>")
+vim.keymap.set("t", "<space>tt", "<c-\\><c-n>:Floaterminal<CR>")

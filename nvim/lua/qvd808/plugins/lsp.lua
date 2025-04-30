@@ -15,7 +15,8 @@ return {
         clangd = {},      -- C/C++
         ts_ls = {},       -- Typescript/Javascript
         tailwindcss = {}, --Tailwind
-        zls = {}          -- Zig
+        zls = {},         -- Zig
+        -- arduino_language_server = {}, -- Arduino
       }
 
       -- Setup capabilities

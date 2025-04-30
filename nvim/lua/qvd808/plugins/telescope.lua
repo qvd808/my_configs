@@ -35,6 +35,7 @@ return {
       vim.keymap.set("n", "<space>rr", require("telescope.builtin").lsp_references)
       vim.keymap.set("n", "<space>fh", require("telescope.builtin").help_tags)
       vim.keymap.set("n", "<space>gb", require("telescope.builtin").git_branches)
+      vim.keymap.set("n", 'gd', require('telescope.builtin').lsp_definitions, { desc = '[G]oto [D]efinition' })
     end
   }
 }

@@ -64,27 +64,51 @@ local diff_branch = function(opts)
     state.files_diff = create_window { buf = state.files_diff.buf }
   end
 
-  -- List of file to iterate through
-  local files = vim.fn.systemlist("git diff --name-only " .. branch .. " HEAD")
+  -- Get the list of changed files within the current directory
+  local cmd = string.format("git diff --name-only %s HEAD -- .", branch)
+  local files_with_paths = vim.fn.systemlist(cmd)
 
   if vim.v.shell_error ~= 0 then
     vim.notify("Failed to run git diff", vim.log.levels.ERROR)
     return
   end
 
-  local lines = {
-    "init.lua",
-    "lua/qvd808/plugins/undotree.lua",
-  }
+  -- Get the current working directory
+  local current_dir = vim.fn.getcwd()
+  local current_folder = vim.fn.fnamemodify(current_dir, ":t")
+
+  local files = {}
+  for _, file_path in ipairs(files_with_paths) do
+    -- Remove the current directory prefix if it exists
+    local relative_path = string.gsub(file_path, "^" .. current_folder .. "/", "")
+    table.insert(files, relative_path)
+  end
+
+  if #files == 0 then
+    vim.notify("No differences with " .. branch .. " in the current directory", vim.log.levels.INFO)
+    return
+  end
+
+  local lines = files
 
   -- Set the lines in the buffer
   vim.api.nvim_buf_set_lines(state.files_diff.buf, 0, -1, false, lines)
 
-  -- Press enter on the line trigger command
+  -- Press enter on the line trigger command (buffer-local mapping)
   vim.api.nvim_buf_set_keymap(state.files_diff.buf, 'n', '<CR>', [[:lua _G.on_diff_file_enter()<CR>]], {
     noremap = true,
     silent = true,
   })
+
+  -- Add a keymap to close the diff window
+  vim.api.nvim_buf_set_keymap(state.files_diff.buf, 'n', 'q', [[:lua _G.close_diff_window()<CR>]], {
+    noremap = true,
+    silent = true,
+    desc = "Close Diff List"
+  })
+
+  -- Ensure the diff window has focus after populating it
+  vim.api.nvim_set_current_win(state.files_diff.win)
 end
 
 vim.api.nvim_create_user_command("DiffBranch", diff_branch, {
@@ -105,11 +129,12 @@ _G.on_diff_file_enter = function()
 
   -- Switch to the main window
   if vim.api.nvim_win_is_valid(state.main_win.win) then
-    if vim.api.nvim_buf_is_valid(state.main_win.buf) then
+    if not vim.api.nvim_buf_is_valid(state.main_win.buf) then
       state.main_win.buf = vim.api.nvim_create_buf(false, true)
     else
       vim.api.nvim_buf_set_lines(state.main_win.buf, 0, -1, false, {})
     end
+
     vim.api.nvim_set_current_win(state.main_win.win)
 
     -- Check if fugitive buffer is still on
@@ -138,9 +163,10 @@ _G.on_diff_file_enter = function()
     end
 
     -- Run Gdiffsplit with the provided branch
-    -- vim.cmd("Gdiffsplit " .. state.branch .. ":" .. line)
-    -- state.main_win.fugitive_on = true
+    vim.cmd("Gdiffsplit " .. state.branch)
+    state.main_win.fugitive_on = true
     print(line)
     vim.api.nvim_set_current_win(state.files_diff.win)
   end
 end
+

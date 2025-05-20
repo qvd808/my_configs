@@ -15,7 +15,7 @@ local state = {
 local function file_exists_in_branch(branch, filepath)
   local cmd = string.format("git ls-tree --name-only %s %s", branch, filepath)
   local result = vim.fn.systemlist(cmd)
-  return result[1] == filepath
+  return #result > 0 and result[1] == filepath
 end
 
 local function create_window(opts)
@@ -23,7 +23,7 @@ local function create_window(opts)
 
   -- Create or reuse the buffer
   local buf = nil
-  if vim.api.nvim_buf_is_valid(opts.buf) then
+  if opts.buf and vim.api.nvim_buf_is_valid(opts.buf) then
     buf = opts.buf
   else
     buf = vim.api.nvim_create_buf(false, true) -- No file, scratch buffer
@@ -43,7 +43,44 @@ local function create_window(opts)
   vim.api.nvim_win_set_option(win, 'number', false)
   vim.api.nvim_win_set_option(win, 'relativenumber', false)
 
+  -- Set buffer options
+  vim.api.nvim_buf_set_option(buf, 'buftype', 'nofile')
+  vim.api.nvim_buf_set_option(buf, 'swapfile', false)
+  vim.api.nvim_buf_set_option(buf, 'modifiable', true)
+
   return { buf = buf, win = win }
+end
+
+-- Function to handle fugitive buffers by marking them read-only
+local function handle_fugitive_buffers()
+  -- Get all buffers
+  local buffers = vim.api.nvim_list_bufs()
+  for _, buf in ipairs(buffers) do
+    -- Check if the buffer is valid and is a fugitive buffer
+    if vim.api.nvim_buf_is_valid(buf) then
+      local bufname = vim.api.nvim_buf_get_name(buf)
+      if string.match(bufname, "^fugitive://") then
+        -- Make buffer read-only and not modifiable
+        pcall(function()
+          vim.api.nvim_buf_set_option(buf, 'readonly', true)
+          vim.api.nvim_buf_set_option(buf, 'modifiable', false)
+        end)
+      end
+    end
+  end
+  state.main_win.fugitive_on = false
+end
+
+-- Function to close the diff window
+_G.close_diff_window = function()
+  if vim.api.nvim_win_is_valid(state.files_diff.win) then
+    vim.api.nvim_win_close(state.files_diff.win, true)
+    state.files_diff.win = -1
+  end
+
+  -- Turn off diff mode and handle fugitive buffers
+  vim.cmd("diffoff!")
+  handle_fugitive_buffers()
 end
 
 local diff_branch = function(opts)
@@ -89,10 +126,17 @@ local diff_branch = function(opts)
     return
   end
 
-  local lines = files
+  -- Set the title for the buffer
+  vim.api.nvim_buf_set_name(state.files_diff.buf, "Diff: HEAD vs " .. branch)
+
+  -- Make the buffer modifiable
+  vim.api.nvim_buf_set_option(state.files_diff.buf, 'modifiable', true)
 
   -- Set the lines in the buffer
-  vim.api.nvim_buf_set_lines(state.files_diff.buf, 0, -1, false, lines)
+  vim.api.nvim_buf_set_lines(state.files_diff.buf, 0, -1, false, files)
+
+  -- Make the buffer non-modifiable after setting content
+  vim.api.nvim_buf_set_option(state.files_diff.buf, 'modifiable', false)
 
   -- Press enter on the line trigger command (buffer-local mapping)
   vim.api.nvim_buf_set_keymap(state.files_diff.buf, 'n', '<CR>', [[:lua _G.on_diff_file_enter()<CR>]], {
@@ -129,44 +173,42 @@ _G.on_diff_file_enter = function()
 
   -- Switch to the main window
   if vim.api.nvim_win_is_valid(state.main_win.win) then
-    if not vim.api.nvim_buf_is_valid(state.main_win.buf) then
-      state.main_win.buf = vim.api.nvim_create_buf(false, true)
-    else
-      vim.api.nvim_buf_set_lines(state.main_win.buf, 0, -1, false, {})
-    end
-
     vim.api.nvim_set_current_win(state.main_win.win)
 
-    -- Check if fugitive buffer is still on
-    if state.main_win.fugitive_on then
-      vim.cmd("q")
-    end
-
-    -- Open the file
-    vim.cmd("edit " .. line)
+    -- Handle existing fugitive buffers and turn off diff mode
+    handle_fugitive_buffers()
+    vim.cmd("diffoff!")
 
     -- Check both branches
     local file_exists_in_current = file_exists_in_branch("HEAD", line)
     local file_exists_in_target = file_exists_in_branch(state.branch, line)
 
-
-    if not file_exists_in_current then
-      vim.notify("File does not exist in current branch: " .. line, vim.log.levels.ERROR)
+    if not file_exists_in_current and not file_exists_in_target then
+      vim.notify("File does not exist in either branch: " .. line, vim.log.levels.ERROR)
       vim.api.nvim_set_current_win(state.files_diff.win)
       return
+    end
+
+    if not file_exists_in_current then
+      vim.notify("File does not exist in current branch, but exists in " .. state.branch, vim.log.levels.WARN)
+      -- Can still proceed with diff using fugitive
     end
 
     if not file_exists_in_target then
-      vim.notify("File does not exist in branch '" .. state.branch .. "': " .. line, vim.log.levels.ERROR)
-      vim.api.nvim_set_current_win(state.files_diff.win)
-      return
+      vim.notify("File exists in current branch, but not in " .. state.branch, vim.log.levels.WARN)
+      -- Can still proceed with diff using fugitive
     end
+
+    -- Open the file first to ensure we're viewing the current version
+    vim.cmd("edit " .. line)
 
     -- Run Gdiffsplit with the provided branch
     vim.cmd("Gdiffsplit " .. state.branch)
     state.main_win.fugitive_on = true
-    print(line)
+
+    -- Return focus to the diff list window
     vim.api.nvim_set_current_win(state.files_diff.win)
+  else
+    vim.notify("Main window is no longer valid", vim.log.levels.ERROR)
   end
 end
-

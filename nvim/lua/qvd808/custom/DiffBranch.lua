@@ -196,12 +196,14 @@ _G.on_diff_file_enter = function()
     end
 
     if not file_exists_in_current then
-      vim.notify("File does not exist in current branch, but exists in " .. state.branch, vim.log.levels.WARN)
+      -- vim.notify("File does not exist in current branch, but exists in " .. state.branch, vim.log.levels.WARN)
+      print("File does not exist in current branch, but exists in " .. state.branch)
       -- Can still proceed with diff using fugitive
     end
 
     if not file_exists_in_target then
-      vim.notify("File exists in current branch, but not in " .. state.branch, vim.log.levels.WARN)
+      -- vim.notify("File exists in current branch, but not in " .. state.branch, vim.log.levels.WARN)
+      print("File exists in current branch, but not in " .. state.branch)
       -- Can still proceed with diff using fugitive
     end
 

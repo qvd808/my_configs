@@ -31,6 +31,7 @@ return {
 
       -- Setup LSP servers
       local lspconfig = require("lspconfig")
+
       for server, config in pairs(servers) do
         config.capabilities = capabilities
         lspconfig[server].setup(config)
@@ -69,13 +70,12 @@ return {
                 vim.notify("No compile_commands.json files found", vim.log.levels.WARN)
                 return
               elseif #files == 1 then
+                local dir = vim.fn.fnamemodify(files[1], ":h")
                 vim.notify("Using: " .. files[1])
+                client.config.cmd = { "clangd", "--compile-commands-dir=" .. dir }
                 vim.lsp.stop_client(client.id)
                 vim.defer_fn(function()
-                  require("lspconfig").clangd.setup({
-                    cmd = { "clangd", "--compile-commands-dir=" .. vim.fn.fnamemodify(files[1], ":h") }
-                  })
-                  vim.cmd("edit") -- reload buffer
+                  vim.cmd("edit") -- reload buffer to trigger LspAttach
                 end, 100)
               else
                 vim.ui.select(files, {
@@ -85,13 +85,12 @@ return {
                   end,
                 }, function(choice)
                   if choice then
+                    local dir = vim.fn.fnamemodify(choice, ":h")
                     vim.notify("Using: " .. choice)
+                    client.config.cmd = { "clangd", "--compile-commands-dir=" .. dir }
                     vim.lsp.stop_client(client.id)
                     vim.defer_fn(function()
-                      require("lspconfig").clangd.setup({
-                        cmd = { "clangd", "--compile-commands-dir=" .. vim.fn.fnamemodify(choice, ":h") }
-                      })
-                      vim.cmd("edit") -- reload buffer
+                      vim.cmd("edit") -- reload buffer to trigger LspAttach
                     end, 100)
                   end
                 end)

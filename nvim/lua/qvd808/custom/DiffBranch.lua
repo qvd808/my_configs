@@ -57,7 +57,7 @@ local function handle_fugitive_buffers()
   local buffers = vim.api.nvim_list_bufs()
   for _, buf in ipairs(buffers) do
     -- Check if the buffer is valid and is a fugitive buffer
-    if vim.api.nvim_buf_is_valid(buf) then
+    if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_is_loaded(buf) then
       local bufname = vim.api.nvim_buf_get_name(buf)
       if string.match(bufname, "^fugitive://") then
         -- Make buffer read-only and not modifiable
@@ -65,6 +65,12 @@ local function handle_fugitive_buffers()
           vim.api.nvim_buf_set_option(buf, 'readonly', true)
           vim.api.nvim_buf_set_option(buf, 'modifiable', false)
         end)
+        if state.main_win.fugitive_on then
+          vim.cmd("bd! " .. bufname)
+        end
+        -- Ensure the main window has focus after populating it
+        -- vim.api.nvim_set_current_win(state.main_win.win)
+        -- print("run one time")
       end
     end
   end

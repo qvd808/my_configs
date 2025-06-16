@@ -22,7 +22,13 @@ return {
           },
           help_tags = {
             theme = "dropdown"
-          }
+          },
+          live_grep = {
+            file_ignore_patterns = { 'node_modules', '.git', '.venv' },
+            additional_args = function(opts)
+              return { "--hidden", "--no-ignore" }
+            end
+          },
         },
         extensions = {
           fzf = {}

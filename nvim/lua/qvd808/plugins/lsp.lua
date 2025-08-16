@@ -16,6 +16,22 @@ return {
         ts_ls = {},       -- Typescript/Javascript
         tailwindcss = {}, --Tailwind
         zls = {},         -- Zig
+        verible = {
+          filetypes = { 'verilog', 'systemverilog' },
+          root_dir = function(fname)
+            return require('lspconfig').util.find_git_ancestor(fname) or vim.fn.getcwd()
+          end,
+          -- Remove the nested settings structure - Verible doesn't use it this way
+          cmd = {
+            'verible-verilog-ls',
+            '--rules_config_search',
+            '--port_declarations_alignment=align',
+            '--formal_parameters_alignment=align',
+            '--assignment_statement_alignment=align',
+            '--indentation_spaces=2',
+            '--column_limit=100'
+          },
+        },
         -- arduino_language_server = {}, -- Arduino
       }
 
@@ -115,8 +131,9 @@ return {
           vim.keymap.set("n", "grr", vim.lsp.buf.references)
           vim.keymap.set("i", "<C-s>", vim.lsp.buf.signature_help)
           vim.keymap.set("n", 'K', vim.lsp.buf.hover, { desc = 'Hover Documentation' })
-          vim.keymap.set("n", 'gI', require('telescope.builtin').lsp_implementations, { desc = '[G]oto [I]mplementation'})
-          vim.keymap.set("n", 'gd', require('telescope.builtin').lsp_definitions, {desc = 'Go to Definition'})
+          vim.keymap.set("n", 'gI', require('telescope.builtin').lsp_implementations,
+            { desc = '[G]oto [I]mplementation' })
+          vim.keymap.set("n", 'gd', require('telescope.builtin').lsp_definitions, { desc = 'Go to Definition' })
         end,
       })
     end

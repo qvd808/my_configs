@@ -3,33 +3,35 @@ return {
     "neovim/nvim-lspconfig",
     dependencies = {
       -- Automatically install LSPs and related tools to stdpath for Neovim
-      { 'williamboman/mason.nvim', config = true }, -- NOTE: Must be loaded before dependants
-      'williamboman/mason-lspconfig.nvim',
-      { 'folke/neodev.nvim',       opts = {} },     -- Use for configuring Lua LSP
+      { "williamboman/mason.nvim", config = true }, -- NOTE: Must be loaded before dependants
+      "williamboman/mason-lspconfig.nvim",
+      { "folke/neodev.nvim", opts = {} }, -- Use for configuring Lua LSP
+      { "j-hui/fidget.nvim" },
     },
     config = function()
       -- List of servers to install and configure
       local servers = {
-        lua_ls = {},      -- Lua
-        pyright = {},     -- Python
-        clangd = {},      -- C/C++
-        ts_ls = {},       -- Typescript/Javascript
+        lua_ls = {}, -- Lua
+        pyright = {}, -- Python
+        clangd = {}, -- C/C++
+        ts_ls = {}, -- Typescript/Javascript
         tailwindcss = {}, --Tailwind
-        zls = {},         -- Zig
+        rust_analyzer = {},
+        zls = {}, -- Zig
         verible = {
-          filetypes = { 'verilog', 'systemverilog' },
+          filetypes = { "verilog", "systemverilog" },
           root_dir = function(fname)
-            return require('lspconfig').util.find_git_ancestor(fname) or vim.fn.getcwd()
+            return require("lspconfig").util.find_git_ancestor(fname) or vim.fn.getcwd()
           end,
           -- Remove the nested settings structure - Verible doesn't use it this way
           cmd = {
-            'verible-verilog-ls',
-            '--rules_config_search',
-            '--port_declarations_alignment=align',
-            '--formal_parameters_alignment=align',
-            '--assignment_statement_alignment=align',
-            '--indentation_spaces=2',
-            '--column_limit=100'
+            "verible-verilog-ls",
+            "--rules_config_search",
+            "--port_declarations_alignment=align",
+            "--formal_parameters_alignment=align",
+            "--assignment_statement_alignment=align",
+            "--indentation_spaces=2",
+            "--column_limit=100",
           },
         },
         -- arduino_language_server = {}, -- Arduino
@@ -37,12 +39,14 @@ return {
 
       -- Setup capabilities
       local capabilities = vim.lsp.protocol.make_client_capabilities()
-      capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
+      capabilities = vim.tbl_deep_extend("force", capabilities, require("cmp_nvim_lsp").default_capabilities())
+
+      require("fidget").setup({})
 
       -- Setup Mason
       require("mason-lspconfig").setup({
         ensure_installed = vim.tbl_keys(servers), -- Install listed servers
-        automatic_enable = false
+        automatic_enable = false,
       })
 
       -- Setup LSP servers
@@ -56,7 +60,9 @@ return {
       vim.api.nvim_create_autocmd("LspAttach", {
         callback = function(args)
           local client = vim.lsp.get_client_by_id(args.data.client_id)
-          if not client then return end
+          if not client then
+            return
+          end
 
           --     -- Detect if there is multiple compile_commands.json for clangd clients
           --     if client.name == "clangd" then
@@ -113,14 +119,8 @@ return {
           --       end, { desc = "Search for compile_commands.json" })
           --     end
 
-          -- Formatting on save
-          if client.supports_method("textDocument/formatting") then
-            vim.api.nvim_create_autocmd("BufWritePre", {
-              buffer = args.buf,
-              callback = function()
-                vim.lsp.buf.format({ async = false })
-              end
-            })
+          if client.supports_method("textDocument/inlayHintProvider") then
+            vim.lsp.inlay_hint.enable(true, { bufnr = args.buf })
           end
 
           -- Diagnostic keymaps
@@ -130,12 +130,16 @@ return {
           vim.keymap.set("n", "gra", vim.lsp.buf.code_action)
           vim.keymap.set("n", "grr", vim.lsp.buf.references)
           vim.keymap.set("i", "<C-s>", vim.lsp.buf.signature_help)
-          vim.keymap.set("n", 'K', vim.lsp.buf.hover, { desc = 'Hover Documentation' })
-          vim.keymap.set("n", 'gI', require('telescope.builtin').lsp_implementations,
-            { desc = '[G]oto [I]mplementation' })
-          vim.keymap.set("n", 'gd', require('telescope.builtin').lsp_definitions, { desc = 'Go to Definition' })
+          vim.keymap.set("n", "K", vim.lsp.buf.hover, { desc = "Hover Documentation" })
+          vim.keymap.set(
+            "n",
+            "gI",
+            require("telescope.builtin").lsp_implementations,
+            { desc = "[G]oto [I]mplementation" }
+          )
+          vim.keymap.set("n", "gd", require("telescope.builtin").lsp_definitions, { desc = "Go to Definition" })
         end,
       })
-    end
-  }
+    end,
+  },
 }

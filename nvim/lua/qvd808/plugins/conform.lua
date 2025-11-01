@@ -2,7 +2,15 @@ return {
   "stevearc/conform.nvim",
   opts = {},
   config = function()
-    local project_root = vim.fn.getcwd() -- adjust if you want dynamic root detection
+    local uv = vim.loop
+    local project_root = vim.fn.getcwd()
+
+    -- check if .prettierrc exists in project root
+    local prettier_config = project_root .. "/.prettierrc"
+    local config_exists = uv.fs_stat(prettier_config)
+    if not config_exists then
+      prettier_config = nil -- fallback to Prettier default
+    end
 
     require("conform").setup({
       format_on_save = {
@@ -41,12 +49,11 @@ return {
         },
         ["prettier"] = {
           command = "prettier",
-          args = {
-            "--config",
-            project_root .. "/.prettierrc", -- always use root config
+          args = vim.tbl_flatten({
+            prettier_config and { "--config", prettier_config } or {},
             "--stdin-filepath",
             "$FILENAME",
-          },
+          }),
         },
       },
     })

@@ -125,7 +125,6 @@ return {
 
           -- Diagnostic keymaps
           vim.keymap.set("n", "<leader>e", vim.diagnostic.setqflist, { desc = "Show diagnostic [E]rror message" })
-          vim.keymap.set("n", "<C-e>", vim.diagnostic.open_float, { desc = "Show diagnostic [E]rror message" })
           vim.keymap.set("n", "grn", vim.lsp.buf.rename)
           vim.keymap.set("n", "gra", vim.lsp.buf.code_action)
           vim.keymap.set("n", "grr", vim.lsp.buf.references)
@@ -138,6 +137,21 @@ return {
             { desc = "[G]oto [I]mplementation" }
           )
           vim.keymap.set("n", "gd", require("telescope.builtin").lsp_definitions, { desc = "Go to Definition" })
+
+          vim.keymap.set("n", "<C-e>", function()
+            local line = vim.api.nvim_win_get_cursor(0)[1] - 1
+            local diagnostics = vim.diagnostic.get(0, { lnum = line })
+
+            if #diagnostics > 0 then
+              local message = diagnostics[1].message
+
+              -- Copy to system clipboard
+              vim.fn.setreg("+", message)
+
+              -- Show diagnostic float
+              vim.diagnostic.open_float()
+            end
+          end, { desc = "Show and copy diagnostic [E]rror message" })
         end,
       })
     end,

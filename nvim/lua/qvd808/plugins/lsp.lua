@@ -2,129 +2,155 @@ return {
   {
     "neovim/nvim-lspconfig",
     dependencies = {
-      -- Automatically install LSPs and related tools to stdpath for Neovim
-      { "williamboman/mason.nvim", config = true }, -- NOTE: Must be loaded before dependants
-      "williamboman/mason-lspconfig.nvim",
-      { "folke/neodev.nvim", opts = {} }, -- Use for configuring Lua LSP
-      { "j-hui/fidget.nvim" },
-    },
-    config = function()
-      -- List of servers to install and configure
-      local servers = {
-        lua_ls = {}, -- Lua
-        pyright = {}, -- Python
-        clangd = {}, -- C/C++
-        ts_ls = {}, -- Typescript/Javascript
-        tailwindcss = {}, --Tailwind
-        rust_analyzer = {},
-        zls = {}, -- Zig
-        verible = {
-          filetypes = { "verilog", "systemverilog" },
-          root_dir = function(fname)
-            return require("lspconfig").util.find_git_ancestor(fname) or vim.fn.getcwd()
-          end,
-          -- Remove the nested settings structure - Verible doesn't use it this way
-          cmd = {
-            "verible-verilog-ls",
-            "--rules_config_search",
-            "--port_declarations_alignment=align",
-            "--formal_parameters_alignment=align",
-            "--assignment_statement_alignment=align",
-            "--indentation_spaces=2",
-            "--column_limit=100",
+      {
+        -- `lazydev` configures Lua LSP for your Neovim config, runtime and plugins
+        -- used for completion, annotations and signatures of Neovim apis
+        "folke/lazydev.nvim",
+        ft = "lua",
+        opts = {
+          library = {
+            -- Load luvit types when the `vim.uv` word is found
+            { path = "luvit-meta/library",      words = { "vim%.uv" } },
+            { path = "/usr/share/awesome/lib/", words = { "awesome" } },
           },
         },
-        -- arduino_language_server = {}, -- Arduino
-      }
+      },
 
-      -- Setup capabilities
-      local capabilities = vim.lsp.protocol.make_client_capabilities()
-      capabilities = vim.tbl_deep_extend("force", capabilities, require("cmp_nvim_lsp").default_capabilities())
+      -- Mason setup
+      "williamboman/mason.nvim",
+      "williamboman/mason-lspconfig.nvim",
+      "WhoIsSethDaniel/mason-tool-installer.nvim",
 
+      -- Autoformatting
+      "stevearc/conform.nvim",
+
+      -- Display LSP status
+      {
+        "j-hui/fidget.nvim",
+      },
+    },
+    config = function()
+      -- Set up function
       require("fidget").setup({})
 
-      -- Setup Mason
-      require("mason-lspconfig").setup({
-        ensure_installed = vim.tbl_keys(servers), -- Install listed servers
-        automatic_enable = false,
+      local capabilities = nil
+      if pcall(require, "cmp_nvim_lsp") then
+        capabilities = require("cmp_nvim_lsp").default_capabilities()
+      end
+
+      local servers = {
+        -- Lua
+        lua_ls = {
+          cmd = { "lua-language-server" },
+        },
+
+        -- Rust
+        rust_analyzer = {
+          settings = {
+            ["rust-analyzer"] = {
+              inlayHints = {
+                bindingModeHints = {
+                  enable = false,
+                },
+                chainingHints = {
+                  enable = true,
+                },
+                closingBraceHints = {
+                  enable = true,
+                  minLines = 25,
+                },
+                closureReturnTypeHints = {
+                  enable = "never",
+                },
+                lifetimeElisionHints = {
+                  enable = "never",
+                  useParameterNames = false,
+                },
+                maxLength = 25,
+                parameterHints = {
+                  enable = true,
+                },
+                reborrowHints = {
+                  enable = "never",
+                },
+                renderColons = true,
+                typeHints = {
+                  enable = true,
+                  hideClosureInitialization = false,
+                  hideNamedConstructor = false,
+                },
+              },
+            }
+          }
+        },
+
+        -- C/C++
+        clangd = {
+          -- cmd = { "clangd", unpack(require("custom.clangd").flags) },
+          -- TODO: Could include cmd, but not sure those were all relevant flags.
+          --    looks like something i would have added while i was floundering
+          init_options = { clangdFileStatus = true },
+          filetypes = { "c" },
+        },
+      }
+
+      local servers_to_install = vim.tbl_filter(function(key)
+        local t = servers[key]
+        if type(t) == "table" then
+          return not t.manual_install
+        else
+          return t
+        end
+      end, vim.tbl_keys(servers))
+
+      require("mason").setup()
+      local ensure_installed = {
+        "lua_ls",
+      }
+
+      vim.list_extend(ensure_installed, servers_to_install)
+      require("mason-tool-installer").setup { ensure_installed = ensure_installed }
+
+      -- Set global capabilities for all LSP servers
+      vim.lsp.config("*", {
+        capabilities = capabilities,
       })
 
-      -- Setup LSP servers
-      local lspconfig = require("lspconfig")
-      for server, config in pairs(servers) do
-        config.capabilities = capabilities
-        lspconfig[server].setup(config)
+      -- Configure and enable each LSP server
+      for name, config in pairs(servers) do
+        if config == true then
+          config = {}
+        end
+
+        -- Only call vim.lsp.config if there are server-specific settings
+        if next(config) ~= nil then
+          -- Remove manual_install flag as it's not an LSP config field
+          local lsp_config = vim.tbl_deep_extend("force", {}, config)
+          lsp_config.manual_install = nil
+          vim.lsp.config(name, lsp_config)
+        end
+
+        vim.lsp.enable(name)
       end
 
       -- Adding LSP option on LspAttach
       vim.api.nvim_create_autocmd("LspAttach", {
         callback = function(args)
-          local client = vim.lsp.get_client_by_id(args.data.client_id)
-          if not client then
-            return
+          local bufnr = args.buf
+          local client = assert(vim.lsp.get_client_by_id(args.data.client_id), "must have valid client")
+
+          local settings = servers[client.name]
+          if type(settings) ~= "table" then
+            settings = {}
           end
 
-          --     -- Detect if there is multiple compile_commands.json for clangd clients
-          --     if client.name == "clangd" then
-          --       vim.api.nvim_buf_create_user_command(args.buf, "SearchCompileCommands", function()
-          --         local has_fd = vim.fn.executable("fd") == 1
-          --         local find_command = has_fd
-          --             and { "fd", "--hidden", "--no-ignore", "compile_commands.json" }
-          --             or { "find", ".", "-name", "compile_commands.json" }
-          --
-          --         -- Run the command and capture output
-          --         local handle = io.popen(table.concat(find_command, " "))
-          --         if not handle then
-          --           vim.notify("Failed to run find command", vim.log.levels.ERROR)
-          --           return
-          --         end
-          --
-          --         local result = handle:read("*a")
-          --         handle:close()
-          --
-          --         local files = {}
-          --         for line in result:gmatch("[^\r\n]+") do
-          --           table.insert(files, line)
-          --         end
-          --
-          --         if #files == 0 then
-          --           vim.notify("No compile_commands.json files found", vim.log.levels.WARN)
-          --           return
-          --         elseif #files == 1 then
-          --           local dir = vim.fn.fnamemodify(files[1], ":h")
-          --           vim.notify("Using: " .. files[1])
-          --           client.config.cmd = { "clangd", "--compile-commands-dir=" .. dir }
-          --           vim.lsp.stop_client(client.id)
-          --           vim.defer_fn(function()
-          --             vim.cmd("edit") -- reload buffer to trigger LspAttach
-          --           end, 100)
-          --         else
-          --           vim.ui.select(files, {
-          --             prompt = "Select compile_commands.json for clangd",
-          --             format_item = function(item)
-          --               return vim.fn.fnamemodify(item, ":.")
-          --             end,
-          --           }, function(choice)
-          --             if choice then
-          --               local dir = vim.fn.fnamemodify(choice, ":h")
-          --               vim.notify("Using: " .. choice)
-          --               client.config.cmd = { "clangd", "--compile-commands-dir=" .. dir }
-          --               vim.lsp.stop_client(client.id)
-          --               vim.defer_fn(function()
-          --                 vim.cmd("edit") -- reload buffer to trigger LspAttach
-          --               end, 100)
-          --             end
-          --           end)
-          --         end
-          --       end, { desc = "Search for compile_commands.json" })
-          --     end
-
-          if client.supports_method("textDocument/inlayHintProvider") then
-            vim.lsp.inlay_hint.enable(true, { bufnr = args.buf })
+          if client.server_capabilities.inlayHintProvider then
+            vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
           end
 
           -- Diagnostic keymaps
           vim.keymap.set("n", "<leader>e", vim.diagnostic.setqflist, { desc = "Show diagnostic [E]rror message" })
+          vim.keymap.set("n", "<C-e>", vim.diagnostic.open_float, { desc = "Show diagnostic [E]rror message" })
           vim.keymap.set("n", "grn", vim.lsp.buf.rename)
           vim.keymap.set("n", "gra", vim.lsp.buf.code_action)
           vim.keymap.set("n", "grr", vim.lsp.buf.references)
@@ -138,20 +164,17 @@ return {
           )
           vim.keymap.set("n", "gd", require("telescope.builtin").lsp_definitions, { desc = "Go to Definition" })
 
-          vim.keymap.set("n", "<C-e>", function()
-            local line = vim.api.nvim_win_get_cursor(0)[1] - 1
-            local diagnostics = vim.diagnostic.get(0, { lnum = line })
+          -- Override server capabilities
+          if settings.server_capabilities then
+            for k, v in pairs(settings.server_capabilities) do
+              if v == vim.NIL then
+                ---@diagnostic disable-next-line: cast-local-type
+                v = nil
+              end
 
-            if #diagnostics > 0 then
-              local message = diagnostics[1].message
-
-              -- Copy to system clipboard
-              vim.fn.setreg("+", message)
-
-              -- Show diagnostic float
-              vim.diagnostic.open_float()
+              client.server_capabilities[k] = v
             end
-          end, { desc = "Show and copy diagnostic [E]rror message" })
+          end
         end,
       })
     end,

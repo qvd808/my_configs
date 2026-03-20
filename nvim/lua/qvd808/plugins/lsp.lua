@@ -93,14 +93,6 @@ return {
           filetypes = { "c", "cpp", "objc", "objcpp" },
         },
 
-        -- verilog
-        verible = {},
-
-        -- TypeScript/JavaScript
-        ts_ls = {},
-
-        -- Python
-        pyright = {},
       }
 
       local servers_to_install = vim.tbl_filter(function(key)

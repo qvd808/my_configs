@@ -7,12 +7,13 @@ return {
   config = function()
     local lint = require("lint")
     lint.linters_by_ft = {
-      python = {"pylint"}
+      python = { "pylint" },
+      yaml = { "yamllint" }
     }
 
-    local lint_augroup = vim.api.nvim_create_augroup("lint", {clear  = true})
+    local lint_augroup = vim.api.nvim_create_augroup("lint", { clear = true })
 
-    vim.api.nvim_create_autocmd({"BufEnter", "BufWritePost", "InsertLeave"}, {
+    vim.api.nvim_create_autocmd({ "BufEnter", "BufWritePost", "InsertLeave" }, {
       group = lint_augroup,
       callback = function()
         lint.try_lint()
@@ -21,7 +22,6 @@ return {
 
     vim.keymap.set("n", "<space>ll", function()
       lint.try_lint()
-    end, {desc = "Trigger linting for the current file"})
-
+    end, { desc = "Trigger linting for the current file" })
   end
 }

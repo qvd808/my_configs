@@ -90,8 +90,17 @@ return {
           -- TODO: Could include cmd, but not sure those were all relevant flags.
           --    looks like something i would have added while i was floundering
           init_options = { clangdFileStatus = true },
-          filetypes = { "c" },
+          filetypes = { "c", "cpp", "objc", "objcpp" },
         },
+
+        -- verilog
+        verible = {},
+
+        -- TypeScript/JavaScript
+        ts_ls = {},
+
+        -- Python
+        pyright = {},
       }
 
       local servers_to_install = vim.tbl_filter(function(key)

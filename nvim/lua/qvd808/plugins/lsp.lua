@@ -93,6 +93,45 @@ return {
           filetypes = { "c", "cpp", "objc", "objcpp" },
         },
 
+        -- -- Coq / Rocq
+        -- vscoq = {
+        --   cmd = { "vsrocqtop" },
+        --   filetypes = { "coq" },
+        --   manual_install = true,
+        --   cmd_env = {
+        --     HOME = vim.fn.expand("$HOME"),
+        --     COQLIB = vim.fn.expand("$HOME") .. "/.opam/default/lib/coq",
+        --     COQCORELIB = vim.fn.expand("$HOME") .. "/.opam/default/lib/coq-core",
+        --     PATH = vim.fn.expand("$HOME") .. "/.opam/default/bin:" .. vim.env.PATH,
+        --   },
+        --   single_file_support = true,
+        --   -- add root detection
+        --   root_markers = { "_CoqProject", ".git" },
+        --   settings = {
+        --     vscoq = {
+        --       proof = {
+        --         mode = 0,
+        --       },
+        --       completion = {
+        --         enable = true,
+        --       },
+        --     },
+        --   },
+        -- },
+
+        -- coq-lsp for completion
+        coq_lsp = {
+          cmd = { "coq-lsp" },
+          filetypes = { "coq" },
+          manual_install = true,
+          cmd_env = {
+            HOME = vim.fn.expand("$HOME"),
+            COQLIB = vim.fn.expand("$HOME") .. "/.opam/default/lib/coq",
+            COQCORELIB = vim.fn.expand("$HOME") .. "/.opam/default/lib/coq-core",
+            PATH = vim.fn.expand("$HOME") .. "/.opam/default/bin:" .. vim.env.PATH,
+          },
+          single_file_support = true,
+        },
       }
 
       local servers_to_install = vim.tbl_filter(function(key)

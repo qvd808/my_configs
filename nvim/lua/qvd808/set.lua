@@ -71,7 +71,7 @@ vim.api.nvim_create_autocmd("TextYankPost", {
   desc = "Highlight when yanking text",
   group = vim.api.nvim_create_augroup("kickstart-highlight-yank", { clear = true }),
   callback = function()
-    vim.highlight.on_yank()
+    vim.hl.on_yank()
     if vim.fn.exists('$SSH_CONNECTION') == 1 or vim.fn.exists('$SSH_TTY') == 1 then
       local content = vim.fn.getreg('"')
       local filename = vim.fn.expand("~/clip")

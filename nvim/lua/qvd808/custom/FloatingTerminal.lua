@@ -51,6 +51,8 @@ local toggle_terminal = function()
 end
 
 vim.api.nvim_create_user_command("Floaterminal", toggle_terminal, {})
+-- Leave terminal insert mode; from there the normal-mode toggles below apply
 vim.keymap.set("t", "<C-x>", "<c-\\><c-n>")
+-- Normal mode only: <space> is the leader, so a terminal-mode mapping would
+-- fire whenever a typed space was followed by "tt" within 'timeoutlen'
 vim.keymap.set("n", "<space>tt", ":Floaterminal<CR>")
-vim.keymap.set("t", "<space>tt", "<c-\\><c-n>:Floaterminal<CR>")

@@ -48,6 +48,10 @@ return {
         rust_analyzer = {
           settings = {
             ["rust-analyzer"] = {
+              -- Lint with clippy instead of plain `cargo check`
+              check = {
+                command = "clippy",
+              },
               inlayHints = {
                 bindingModeHints = {
                   enable = false,
@@ -101,6 +105,21 @@ return {
 
         -- Python
         pyright = {},
+
+        -- Go
+        gopls = {
+          settings = {
+            gopls = {
+              analyses = {
+                unusedparams = true,
+              },
+              staticcheck = true,
+            },
+          },
+        },
+
+        -- JSON
+        jsonls = {},
       }
 
       local servers_to_install = vim.tbl_filter(function(key)
@@ -115,6 +134,21 @@ return {
       require("mason").setup()
       local ensure_installed = {
         "lua_ls",
+
+        -- Formatters (conform.nvim)
+        "prettier",
+        "stylua",
+        "clang-format",
+        "taplo",
+        "shfmt",
+        "goimports",
+        "gofumpt",
+        "ruff",
+
+        -- Linters (nvim-lint)
+        "eslint_d",
+        "golangci-lint",
+        "yamllint",
       }
 
       vim.list_extend(ensure_installed, servers_to_install)

@@ -1,59 +1,41 @@
 return {
   "stevearc/conform.nvim",
-  opts = {},
   config = function()
-    local uv = vim.loop
-    local project_root = vim.fn.getcwd()
-
-    -- check if .prettierrc exists in project root
-    local prettier_config = project_root .. "/.prettierrc"
-    local config_exists = uv.fs_stat(prettier_config)
-    if not config_exists then
-      prettier_config = nil -- fallback to Prettier default
-    end
-
     require("conform").setup({
       format_on_save = {
         timeout_ms = 3000,
         lsp_format = "fallback",
       },
-      async = true,
       formatters_by_ft = {
         c = { "clang-format" },
         cpp = { "clang-format" },
         lua = { "stylua" },
-        javascript = { "prettier" },
-        typescript = { "prettier" },
-        json = { "prettier" },
-        html = { "prettier" },
-        css = { "prettier" },
         rust = { "rustfmt" },
+        go = { "goimports", "gofumpt" },
+        python = { "ruff_organize_imports", "ruff_format" },
         toml = { "taplo" },
         sh = { "shfmt" },
+        bash = { "shfmt" },
+        javascript = { "prettier" },
+        javascriptreact = { "prettier" },
+        typescript = { "prettier" },
+        typescriptreact = { "prettier" },
+        json = { "prettier" },
+        jsonc = { "prettier" },
+        html = { "prettier" },
+        css = { "prettier" },
+        scss = { "prettier" },
+        yaml = { "prettier" },
+        markdown = { "prettier" },
       },
       formatters = {
+        -- prepend_args merges with the builtin args; a plain `args` would replace
+        -- them and drop the stdin/filename plumbing conform relies on.
         ["clang-format"] = {
           prepend_args = { "-style=file", "-fallback-style=LLVM" },
         },
-        ["rustfmt"] = {
-          command = "rustfmt",
-          args = { "--edition=2021" },
-        },
-        ["taplo"] = {
-          command = "taplo",
-          args = { "format", "-" },
-        },
-        ["shfmt"] = {
-          command = "shfmt",
-          args = { "-i", "2", "-bn", "-ci" },
-        },
-        ["prettier"] = {
-          command = "prettier",
-          args = vim.tbl_flatten({
-            prettier_config and { "--config", prettier_config } or {},
-            "--stdin-filepath",
-            "$FILENAME",
-          }),
+        shfmt = {
+          prepend_args = { "-i", "2", "-bn", "-ci" },
         },
       },
     })

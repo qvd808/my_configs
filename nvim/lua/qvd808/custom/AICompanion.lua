@@ -32,6 +32,13 @@ local SPIN_MARK = 1
 -- past one frame per edit.
 local MAX_LINES = 1200
 
+-- Conversation history budget, in characters (~4 chars per token). Each turn
+-- re-sends everything before it, but DeepSeek prefix-caches the shared head --
+-- measured 75-97% cache hits across a multi-step run -- so the cost of history
+-- is far below its token count. The context window is the real limit, not the
+-- bill, which is what this budget protects.
+local HISTORY_MAX_CHARS = 96 * 1024
+
 local NS = vim.api.nvim_create_namespace("ai-companion")
 local NS_SPIN = vim.api.nvim_create_namespace("ai-companion-spinner")
 
@@ -43,7 +50,28 @@ local state = {
   spin       = 1,
   started    = 0,
   pending_at = nil, -- 0-indexed line the in-flight placeholder starts on
+  history    = {},  -- conversation sent to the model, oldest first
+  awaiting   = nil, -- workflow waiting for its argument
 }
+
+-- Drops whole turns off the front until the history fits the budget. Turns are
+-- dropped in pairs so the transcript never starts on an assistant reply to a
+-- question the model can no longer see.
+local function trim_history()
+  local function size()
+    local n = 0
+    for _, m in ipairs(state.history) do
+      n = n + #(m.content or "")
+    end
+    return n
+  end
+  while size() > HISTORY_MAX_CHARS and #state.history > 2 do
+    table.remove(state.history, 1)
+    if state.history[1] and state.history[1].role == "assistant" then
+      table.remove(state.history, 1)
+    end
+  end
+end
 
 -- ---------------------------------------------------------------------------
 -- Theme. Backgrounds are derived from Normal so they track any colorscheme
@@ -57,6 +85,19 @@ local function shade(rgb, delta)
     return math.max(0, math.min(255, math.floor(v + delta)))
   end
   return clamp(r) * 65536 + clamp(g) * 256 + clamp(b)
+end
+
+-- alpha 0 = all base, 1 = all target
+local function blend(base, target, alpha)
+  local function ch(v, shift)
+    return math.floor(v / shift) % 256
+  end
+  local function mix(a, b)
+    return math.floor(a + (b - a) * alpha + 0.5)
+  end
+  return mix(ch(base, 65536), ch(target, 65536)) * 65536
+    + mix(ch(base, 256), ch(target, 256)) * 256
+    + mix(ch(base, 1), ch(target, 1))
 end
 
 local function define_highlights()
@@ -87,6 +128,20 @@ local function define_highlights()
   local dir = (0.299 * r + 0.587 * g + 0.114 * b) < 128 and 1 or -1
   hl(0, "AIChatAssistant", { bg = shade(base, dir * 10) })
   hl(0, "AIChatCode",      { bg = shade(base, dir * 26) })
+
+  -- Before/after blocks. Both sit in the blue family rather than red/green:
+  -- ORIGINAL is a low-chroma indigo that reads as faded, UPDATE is a brighter,
+  -- bluer azure that reads as present. Separated on chroma *and* luminance so
+  -- they stay distinguishable without colour-coding correctness.
+  local dark = dir == 1
+  local old_bg  = dark and 0x2A2E44 or 0xE2E4F0
+  local new_bg  = dark and 0x1F4A6B or 0xC6DCF2
+  -- blend a little toward the scheme's own ground so it does not look pasted on
+  hl(0, "AIChatDiffOld",     { bg = blend(base, old_bg, 0.82) })
+  hl(0, "AIChatDiffNew",     { bg = blend(base, new_bg, 0.82) })
+  hl(0, "AIChatDiffOldSign", { fg = dark and 0x8A90B0 or 0x5B6180, bold = true })
+  hl(0, "AIChatDiffNewSign", { fg = dark and 0x6FC3F5 or 0x1E6FA8, bold = true })
+  hl(0, "AIChatDiffFence",   { fg = dark and 0x7E88B8 or 0x565E8C, italic = true })
 end
 
 -- ---------------------------------------------------------------------------
@@ -171,7 +226,7 @@ local function create_chat_ui()
   vim.wo[iwin].linebreak = true
   vim.wo[iwin].breakindent = false
   vim.wo[iwin].list = false
-  vim.wo[iwin].winbar = "%#AIChatBar# message %= <CR> send %*"
+  vim.wo[iwin].winbar = "%#AIChatBar# message %= /help  <CR> send %*"
 
   return { transcript = { buf = tbuf, win = twin }, input = { buf = ibuf, win = iwin } }
 end
@@ -197,6 +252,29 @@ local function trim_transcript()
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, count - MAX_LINES, false, {})
   vim.bo[buf].modifiable = false
+end
+
+-- ORIGINAL / UPDATE block spans, as 0-indexed buffer rows plus which group
+-- paints them. Returned separately from code fences because these nest inside
+-- a message and carry their own colour.
+local function diff_spans(lines, offset)
+  local D = require("qvd808.custom.ai.diff")
+  local spans, open, group = {}, nil, nil
+  for i, line in ipairs(lines) do
+    local trimmed = vim.trim(line)
+    if trimmed == D.FENCE_OLD_OPEN then
+      open, group = offset + i - 1, "AIChatDiffOld"
+    elseif trimmed == D.FENCE_NEW_OPEN then
+      open, group = offset + i - 1, "AIChatDiffNew"
+    elseif (trimmed == D.FENCE_OLD_CLOSE or trimmed == D.FENCE_NEW_CLOSE) and open then
+      spans[#spans + 1] = { open, offset + i - 1, group }
+      open, group = nil, nil
+    end
+  end
+  if open then
+    spans[#spans + 1] = { open, offset + #lines - 1, group }
+  end
+  return spans
 end
 
 -- Fenced code spans within `lines`, as 0-indexed buffer rows.
@@ -276,6 +354,23 @@ local function put_message(opts)
   -- treesitter paints the syntax colours over both.
   for _, span in ipairs(fence_spans(lines, start)) do
     paint(span[1], span[2], "AIChatCode", PRIO_CODE)
+  end
+
+  -- Before/after blocks paint above code fences, and their -/+ markers and
+  -- fence lines get a foreground on top of that.
+  for _, span in ipairs(diff_spans(lines, start)) do
+    paint(span[1], span[2], span[3], PRIO_CODE + 1)
+    local sign_hl = span[3] == "AIChatDiffOld" and "AIChatDiffOldSign" or "AIChatDiffNewSign"
+    for row = span[1], span[2] do
+      local text = lines[row - start + 1] or ""
+      if row == span[1] or row == span[2] then
+        vim.api.nvim_buf_set_extmark(buf, NS, row, 0,
+          { end_col = #text, hl_group = "AIChatDiffFence", priority = PRIO_HEADER })
+      elseif text:sub(1, 1) == "-" or text:sub(1, 1) == "+" then
+        vim.api.nvim_buf_set_extmark(buf, NS, row, 0,
+          { end_col = 1, hl_group = sign_hl, priority = PRIO_HEADER })
+      end
+    end
   end
 
   -- Role header, above treesitter so it is not repainted as markdown prose.
@@ -387,13 +482,32 @@ local function on_response(res, elapsed_ms)
   end
 
   local choice = decoded.choices and decoded.choices[1]
-  local content = choice and choice.message and choice.message.content
+  local message = choice and choice.message or {}
+  local content = message.content
   if not content or content == "" then
-    return fail("no content in response")
+    -- A tool call legitimately returns content == "". Only the case with
+    -- neither content nor tool_calls is actually empty.
+    if message.tool_calls and #message.tool_calls > 0 then
+      local names = {}
+      for _, c in ipairs(message.tool_calls) do
+        names[#names + 1] = c["function"] and c["function"].name or "?"
+      end
+      content = "requested tools: " .. table.concat(names, ", ")
+        .. "\n(plain chat has no tool loop -- type /help for workflows)"
+    else
+      return fail("no content in response")
+    end
   end
+
+  state.history[#state.history + 1] = { role = "assistant", content = content }
 
   local usage = decoded.usage or {}
   local meta = string.format("%.1fs - %d tok", elapsed_ms / 1000, usage.completion_tokens or 0)
+  if usage.prompt_cache_hit_tokens and usage.prompt_tokens and usage.prompt_tokens > 0 then
+    meta = meta .. string.format(" - %d%% cached", math.floor(
+      100 * usage.prompt_cache_hit_tokens / usage.prompt_tokens))
+  end
+  meta = meta .. string.format(" - %d turns", math.floor(#state.history / 2))
 
   -- finish_reason == "length" means MAX_TOKENS cut the reply off mid-sentence.
   -- Say so, rather than leaving a silently truncated answer that reads as if
@@ -419,9 +533,12 @@ local function send(prompt)
     return fail(err)
   end
 
+  state.history[#state.history + 1] = { role = "user", content = prompt }
+  trim_history()
+
   local body = vim.json.encode({
     model = MODEL,
-    messages = { { role = "user", content = prompt } },
+    messages = state.history,
     max_tokens = MAX_TOKENS,
     stream = false,
   })
@@ -446,6 +563,105 @@ local function send(prompt)
 end
 
 -- ---------------------------------------------------------------------------
+-- Workflow dispatch
+-- ---------------------------------------------------------------------------
+-- A workflow runs isolated: it gets the argument and nothing else. Chat
+-- history is deliberately not passed in, so a long conversation cannot leak
+-- into a state that was scoped to one job.
+local function run_workflow(spec, arg)
+  start_spinner()
+  state.job = true
+
+  local ctx = {}
+
+  --- Suspend the workflow and put a question to the user. `choices` may be nil
+  --- for free text. The job slot and spinner are released while we wait, so
+  --- the pane stays usable, and re-acquired when the answer arrives.
+  ctx.ask = function(question, choices, resolve)
+    state.job = nil
+    stop_spinner()
+    state.pending_at = nil
+
+    local lines = { question, "" }
+    if choices then
+      for i, c in ipairs(choices) do
+        lines[#lines + 1] = ("%d. **%s** - %s"):format(i, c.label, c.hint or "")
+      end
+      lines[#lines + 1] = ""
+      lines[#lines + 1] = "_reply with a number_"
+    end
+    put_message({ label = "?", hl = "AIChatMeta", text = table.concat(lines, "\n") })
+
+    state.awaiting = {
+      kind = "ask",
+      resolve = function(answer)
+        answer = vim.trim(answer)
+        state.job = true
+        start_spinner()
+        if not choices then
+          return resolve(nil, answer)
+        end
+        -- People answer "1", "1.", "1. it should compile", or "compile".
+        -- Take a leading number if there is one, else match on words.
+        local picked = choices[tonumber(answer:match("^%s*(%d+)") or "") or -1]
+        if not picked then
+          local lowered = answer:lower()
+          for _, c in ipairs(choices) do
+            if c.id == lowered
+              or lowered:find(c.id, 1, true)
+              or lowered:find(c.label:lower(), 1, true)
+              or c.label:lower():find(lowered, 1, true) then
+              picked = c
+              break
+            end
+          end
+        end
+        resolve(picked, answer)
+      end,
+    }
+  end
+
+  ctx.on_step = function(node, note)
+      if state.pending_at == nil or not vim.api.nvim_buf_is_valid(state.transcript.buf) then
+        return
+      end
+      vim.api.nvim_buf_set_extmark(state.transcript.buf, NS_SPIN, state.pending_at, 0, {
+        id = SPIN_MARK,
+        virt_text = { { ("  [%s] %s"):format(node, note), "AIChatMeta" } },
+        virt_text_pos = "eol",
+        priority = PRIO_HEADER,
+      })
+  end
+
+  local ok, err = pcall(spec.run, arg, ctx, function(rerr, result)
+    state.job = nil
+    stop_spinner()
+    if rerr then
+      put_message({ at = state.pending_at, label = "/" .. spec.name .. " failed",
+                    hl = "AIChatErr", text = rerr })
+    else
+      put_message({
+        at = state.pending_at,
+        label = "/" .. spec.name,
+        hl = "AIChatBot",
+        bg = "AIChatAssistant",
+        meta = result.meta,
+        text = result.text or "",
+      })
+    end
+    state.pending_at = nil
+  end)
+
+  if not ok then
+    state.job = nil
+    stop_spinner()
+    put_message({ at = state.pending_at, label = "/" .. spec.name .. " crashed",
+                  hl = "AIChatErr", text = tostring(err) })
+    state.pending_at = nil
+  end
+end
+
+-- ---------------------------------------------------------------------------
 -- Public
 -- ---------------------------------------------------------------------------
 function M.submit()
@@ -464,6 +680,38 @@ function M.submit()
   end
 
   vim.api.nvim_buf_set_lines(state.input.buf, 0, -1, false, { "" })
+
+  local workflows = require("qvd808.custom.ai.workflows")
+
+  -- A workflow asked a question last turn; this message is the answer.
+  if state.awaiting then
+    local pending = state.awaiting
+    state.awaiting = nil
+    put_message({ label = "you", hl = "AIChatUser", text = prompt })
+    if pending.kind == "ask" then
+      return pending.resolve(prompt)
+    end
+    return run_workflow(pending.spec, prompt)
+  end
+
+  local name, arg = workflows.parse(prompt)
+  if name then
+    put_message({ label = "you", hl = "AIChatUser", text = prompt })
+    local spec = workflows.get(name)
+    if not spec then
+      return put_message({
+        label = "unknown workflow", hl = "AIChatErr",
+        text = "/" .. name .. "\n\ntry: /" .. table.concat(workflows.names(), ", /"),
+      })
+    end
+    -- Invoked bare: ask for the argument instead of guessing at one.
+    if arg == "" and spec.prompt then
+      state.awaiting = { kind = "arg", spec = spec }
+      return put_message({ label = "/" .. spec.name, hl = "AIChatMeta", text = spec.prompt })
+    end
+    return run_workflow(spec, arg)
+  end
+
   -- Trim between turns, never mid-request: dropping lines would shift
   -- state.pending_at out from under the in-flight reply.
   trim_transcript()
@@ -503,7 +751,7 @@ function M.toggle()
     put_message({
       label = "AI Companion",
       hl = "AIChatMeta",
-      text = MODEL_LABEL .. " - single turn, no history",
+      text = MODEL_LABEL .. " - type /help for workflows, :AIClear to reset history",
     })
   end
 
@@ -514,6 +762,12 @@ end
 function M.buffer()
   return ensure_transcript_buffer()
 end
+
+-- Lets a workflow put a block in the transcript without reaching into locals.
+function M.render(opts)
+  return put_message(opts)
+end
+
 
 -- ---------------------------------------------------------------------------
 -- Wiring
@@ -539,6 +793,34 @@ vim.api.nvim_create_autocmd("ColorScheme", {
 define_highlights()
 
 vim.api.nvim_create_user_command("AICompanion", M.toggle, {})
+-- Visual-range rewrite: select a function, :'<,'>AIWrite <goal>
+vim.api.nvim_create_user_command("AIWrite", function(o)
+  local goal = vim.trim(o.args)
+  if goal == "" then
+    return vim.notify("AIWrite: give it a goal", vim.log.levels.WARN)
+  end
+  if state.job then
+    return vim.notify("AI Companion: busy", vim.log.levels.WARN)
+  end
+  if not vim.api.nvim_win_is_valid(state.transcript.win) then
+    M.toggle()
+    vim.cmd("wincmd p")
+  end
+  local srow, erow = o.line1, o.line2
+  put_message({ label = "you", hl = "AIChatUser",
+    text = (":%d,%dAIWrite %s"):format(srow, erow, goal) })
+  run_workflow({
+    name = "write",
+    run = function(_, ctx, cb)
+      require("qvd808.custom.ai.write").run_range(srow, erow, goal, ctx, cb)
+    end,
+  }, goal)
+end, { nargs = "+", range = true, desc = "Rewrite the selected range" })
+
+vim.api.nvim_create_user_command("AIClear", function()
+  state.history = {}
+  put_message({ label = "history cleared", hl = "AIChatMeta" })
+end, { desc = "Forget the conversation so far" })
 vim.keymap.set("n", "<space>ch", ":AICompanion<CR>", { silent = true, desc = "Toggle AI Companion" })
 
 return M

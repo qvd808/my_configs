@@ -1,30 +1,33 @@
 -- Single source of truth for which model we talk to and how.
--- Both providers in ~/.pi/agent/models.json speak openai-completions, so
--- switching is a change to the constants below and nothing else.
+-- openai-completions shape; switch provider by changing the constants below.
 local M = {}
 
 M.provider   = "deepseek"
 M.base_url   = "https://api.deepseek.com"
 M.model      = "deepseek-chat"
 M.label      = "DeepSeek V3"
-M.auth_path  = "~/.pi/agent/auth.json"
 
 -- deepseek-chat allows 8192. Keep this generous: a small cap does not save
 -- money, it just converts one response into several round trips, and each
 -- continuation re-sends everything before it.
 M.max_tokens = 8192
 
+function M.auth_path()
+  return vim.fn.stdpath("config") .. "/auth.json"
+end
+
 function M.key()
-  local path = vim.fn.expand(M.auth_path)
+  local path = M.auth_path()
   if vim.fn.filereadable(path) ~= 1 then
-    return nil, path .. " is not readable"
+    return nil, path .. " is not readable — copy auth.json.example to auth.json and paste your key"
   end
   local ok, decoded = pcall(vim.json.decode, table.concat(vim.fn.readfile(path), "\n"))
   if not ok then
     return nil, "could not parse " .. path
   end
   local entry = decoded[M.provider]
-  if not entry or not entry.key then
+  if not entry or not entry.key or entry.key == ""
+    or entry.key == "PASTE_YOUR_DEEPSEEK_API_KEY_HERE" then
     return nil, "no '" .. M.provider .. "' key in " .. path
   end
   return entry.key

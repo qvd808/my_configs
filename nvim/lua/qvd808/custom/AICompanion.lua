@@ -9,7 +9,6 @@ local PROVIDER    = "deepseek"
 local BASE_URL    = "https://api.deepseek.com"
 local MODEL       = "deepseek-chat"
 local MODEL_LABEL = "DeepSeek V3"
-local AUTH_PATH   = "~/.pi/agent/auth.json"
 -- deepseek-chat allows 8192; 2048 silently cut replies off mid-sentence
 local MAX_TOKENS  = 8192
 
@@ -472,16 +471,17 @@ end
 -- Networking. Raw for now: one turn, no history, no retry, no streaming.
 -- ---------------------------------------------------------------------------
 local function api_key()
-  local path = vim.fn.expand(AUTH_PATH)
+  local path = vim.fn.stdpath("config") .. "/auth.json"
   if vim.fn.filereadable(path) ~= 1 then
-    return nil, path .. " is not readable"
+    return nil, path .. " is not readable — copy auth.json.example to auth.json and paste your key"
   end
   local ok, decoded = pcall(vim.json.decode, table.concat(vim.fn.readfile(path), "\n"))
   if not ok then
     return nil, "could not parse " .. path
   end
   local entry = decoded[PROVIDER]
-  if not entry or not entry.key then
+  if not entry or not entry.key or entry.key == ""
+    or entry.key == "PASTE_YOUR_DEEPSEEK_API_KEY_HERE" then
     return nil, "no '" .. PROVIDER .. "' key in " .. path
   end
   return entry.key
@@ -768,6 +768,23 @@ function M.toggle()
     end
     return
   end
+  M.open({ insert = true })
+end
+
+--- Show the companion UI. opts.insert (default false) enters insert in the input pane.
+function M.open(opts)
+  opts = opts or {}
+  local want_insert = opts.insert == true
+
+  if vim.api.nvim_win_is_valid(state.transcript.win) or vim.api.nvim_win_is_valid(state.input.win) then
+    if want_insert and vim.api.nvim_win_is_valid(state.input.win) then
+      vim.api.nvim_set_current_win(state.input.win)
+      vim.cmd("startinsert")
+    else
+      vim.cmd("stopinsert")
+    end
+    return
+  end
 
   local first = not vim.api.nvim_buf_is_valid(state.transcript.buf)
   local ui = create_chat_ui()
@@ -782,8 +799,12 @@ function M.toggle()
     })
   end
 
-  vim.api.nvim_set_current_win(state.input.win)
-  vim.cmd("startinsert")
+  if want_insert then
+    vim.api.nvim_set_current_win(state.input.win)
+    vim.cmd("startinsert")
+  else
+    vim.cmd("stopinsert")
+  end
 end
 
 function M.buffer()
@@ -793,6 +814,110 @@ end
 -- Lets a workflow put a block in the transcript without reaching into locals.
 function M.render(opts)
   return put_message(opts)
+end
+
+--- Graph web viewer (or other tools): show a short user line, send a packed
+--- prompt to the model. `display_question` is what appears in the transcript;
+--- `packed_prompt` is what the model actually receives.
+function M.ask_with_context(display_question, packed_prompt)
+  display_question = vim.trim(display_question or "")
+  packed_prompt = vim.trim(packed_prompt or "")
+  if packed_prompt == "" then
+    return vim.notify("AI Companion: empty packed prompt", vim.log.levels.WARN)
+  end
+  if state.job then
+    return vim.notify("AI Companion: a reply is still in flight", vim.log.levels.WARN)
+  end
+  if not vim.api.nvim_win_is_valid(state.transcript.win) then
+    M.toggle()
+  end
+  trim_transcript()
+  put_message({
+    label = "you",
+    hl = "AIChatUser",
+    text = display_question ~= "" and display_question or "(graph ask)",
+  })
+  start_spinner()
+  send(packed_prompt)
+end
+
+--- Function-node graph ask: domain brief + bounded tool loop (ReAct-style).
+--- `opts` is forwarded to graph_fn_agent.run (graph, node, question, brief).
+function M.ask_fn_agent(display_question, opts)
+  display_question = vim.trim(display_question or "")
+  opts = opts or {}
+  if state.job then
+    return vim.notify("AI Companion: a reply is still in flight", vim.log.levels.WARN)
+  end
+  if not vim.api.nvim_win_is_valid(state.transcript.win) then
+    M.toggle()
+  end
+  trim_transcript()
+  put_message({
+    label = "you",
+    hl = "AIChatUser",
+    text = display_question ~= "" and display_question or "(graph function ask)",
+  })
+  start_spinner()
+  state.job = true
+
+  local tool_log = {}
+  local state_log = {}
+  local agent = require("qvd808.custom.ai.graph_fn_agent")
+  opts.on_step = function(kind, note)
+    if kind == "tool" then
+      tool_log[#tool_log + 1] = tostring(note)
+    elseif kind == "state" or kind == "gather" or kind == "answer" then
+      state_log[#state_log + 1] = tostring(note)
+    end
+  end
+
+  agent.run(opts, function(err, answer, stats)
+    state.job = nil
+    stop_spinner()
+    if err then
+      put_message({
+        at = state.pending_at,
+        label = "error",
+        hl = "AIChatErr",
+        text = tostring(err),
+      })
+      state.pending_at = nil
+      return
+    end
+    local meta = MODEL_LABEL
+    if stats then
+      local path = stats.path and table.concat(stats.path, "→") or stats.state
+      meta = string.format(
+        "%s - %s · %d tools · %.0fms",
+        MODEL_LABEL,
+        path,
+        stats.tools or 0,
+        stats.ms or 0
+      )
+    end
+    if #tool_log > 0 then
+      meta = meta .. " · " .. table.concat(tool_log, ",")
+    end
+    state.history[#state.history + 1] = {
+      role = "user",
+      content = display_question ~= "" and display_question or "(graph function ask)",
+    }
+    state.history[#state.history + 1] = {
+      role = "assistant",
+      content = answer or "",
+    }
+    trim_history()
+    put_message({
+      at = state.pending_at,
+      label = MODEL_LABEL,
+      hl = "AIChatBot",
+      bg = "AIChatAssistant",
+      meta = meta,
+      text = vim.trim(answer or ""),
+    })
+    state.pending_at = nil
+  end)
 end
 
 
@@ -853,10 +978,16 @@ vim.api.nvim_create_user_command("AIGraph", function()
   if state.job then
     return vim.notify("AI Companion: busy", vim.log.levels.WARN)
   end
+  local prev = vim.api.nvim_get_current_win()
   if not vim.api.nvim_win_is_valid(state.transcript.win) then
-    M.toggle()
-    vim.cmd("wincmd p")
+    M.open({ insert = false })
+  else
+    vim.cmd("stopinsert")
   end
+  if vim.api.nvim_win_is_valid(prev) then
+    vim.api.nvim_set_current_win(prev)
+  end
+  vim.cmd("stopinsert")
   put_message({ label = "you", hl = "AIChatUser", text = "/graph" })
   run_workflow({
     name = "graph",

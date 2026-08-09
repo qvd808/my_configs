@@ -88,7 +88,7 @@ M.register({
 
 M.register({
   name = "graph",
-  description = "LSP call hierarchy → Graphviz; view in browser or terminal",
+  description = "LSP call hierarchy → Graphviz HTML; click a node to ask AI Companion",
   run = function(arg, ctx, cb)
     require("qvd808.custom.ai.graph").run(arg, ctx, cb)
   end,

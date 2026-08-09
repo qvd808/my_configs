@@ -151,8 +151,28 @@ local function side_width()
   return math.floor(vim.o.columns * WIDTH_RATIO)
 end
 
+local function lock_transcript_insert(buf)
+  if vim.b[buf].ai_transcript_locked then
+    return
+  end
+  vim.b[buf].ai_transcript_locked = true
+  vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter", "InsertEnter" }, {
+    buffer = buf,
+    desc = "AI Companion transcript stays in normal mode",
+    callback = function()
+      if vim.fn.mode(1):find("[iR]") then
+        vim.cmd("stopinsert")
+      end
+    end,
+  })
+  for _, lhs in ipairs({ "i", "I", "a", "A", "o", "O", "s", "S", "c", "C" }) do
+    vim.keymap.set("n", lhs, "<Nop>", { buffer = buf, silent = true })
+  end
+end
+
 local function ensure_transcript_buffer()
   if vim.api.nvim_buf_is_valid(state.transcript.buf) then
+    lock_transcript_insert(state.transcript.buf)
     return state.transcript.buf
   end
   local buf = vim.api.nvim_create_buf(false, true)
@@ -160,9 +180,12 @@ local function ensure_transcript_buffer()
   -- in their own language without us parsing anything ourselves
   vim.bo[buf].filetype = "markdown"
   vim.bo[buf].modifiable = false
+  vim.bo[buf].readonly = true
   vim.b[buf].ai_role = "transcript"
   pcall(vim.treesitter.start, buf, "markdown")
   pcall(vim.api.nvim_buf_set_name, buf, "AI Companion")
+  lock_transcript_insert(buf)
+
   state.transcript.buf = buf
   return buf
 end
@@ -250,8 +273,10 @@ local function trim_transcript()
     return
   end
   vim.bo[buf].modifiable = true
+  vim.bo[buf].readonly = false
   vim.api.nvim_buf_set_lines(buf, 0, count - MAX_LINES, false, {})
   vim.bo[buf].modifiable = false
+  vim.bo[buf].readonly = true
 end
 
 -- ORIGINAL / UPDATE block spans, as 0-indexed buffer rows plus which group
@@ -326,8 +351,10 @@ local function put_message(opts)
   vim.api.nvim_buf_clear_namespace(buf, NS, start, -1)
 
   vim.bo[buf].modifiable = true
+  vim.bo[buf].readonly = false
   vim.api.nvim_buf_set_lines(buf, start, -1, false, lines)
   vim.bo[buf].modifiable = false
+  vim.bo[buf].readonly = true
 
   local last = start + #lines - 1
 
@@ -821,6 +848,29 @@ vim.api.nvim_create_user_command("AIClear", function()
   state.history = {}
   put_message({ label = "history cleared", hl = "AIChatMeta" })
 end, { desc = "Forget the conversation so far" })
+
+vim.api.nvim_create_user_command("AIGraph", function()
+  if state.job then
+    return vim.notify("AI Companion: busy", vim.log.levels.WARN)
+  end
+  if not vim.api.nvim_win_is_valid(state.transcript.win) then
+    M.toggle()
+    vim.cmd("wincmd p")
+  end
+  put_message({ label = "you", hl = "AIChatUser", text = "/graph" })
+  run_workflow({
+    name = "graph",
+    run = function(arg, ctx, cb)
+      require("qvd808.custom.ai.graph").run(arg, ctx, cb)
+    end,
+  }, "")
+end, { desc = "LSP call-hierarchy graph in the browser" })
+
+vim.api.nvim_create_user_command("AIGraphStop", function()
+  require("qvd808.custom.ai.graph").stop_server()
+  vim.notify("AI graph server stopped", vim.log.levels.INFO)
+end, { desc = "Stop the local graph HTML server" })
+
 vim.keymap.set("n", "<space>ch", ":AICompanion<CR>", { silent = true, desc = "Toggle AI Companion" })
 
 return M

@@ -7,9 +7,14 @@
 --
 -- Context is narrowed as tightly as the editor can manage:
 --
---   LSP document symbol   (not wired yet -- see M.scope)
+--   LSP document symbol
 --     -> treesitter enclosing node
 --       -> whole buffer
+--
+-- Then a deterministic enrich pass resolves names mentioned in the goal via
+-- Neovim APIs (vim.fs walk + matchstrlist, or rg/grep when available) and LSP
+-- workspace symbols / hover, so the model can see signatures of helpers it
+-- should call without a tool loop.
 --
 -- Each rung is a fallback for the one above, because none of them is
 -- guaranteed: a buffer may have no LSP client, no parser, or neither.
@@ -45,10 +50,14 @@ local CODE_TOOL = {
 local SYSTEM = [[
 Role: Senior engineer writing one focused piece of code.
 
-You are given a goal and the smallest slice of the buffer that contains it --
-often a single function. That slice is the whole job. Do not plan a project, do
-not propose files you were not asked about, do not restructure code you cannot
-see.
+You are given a goal, the smallest slice of the buffer that contains it, and
+(when available) a related-symbols section resolved from names in the goal:
+grep hits, LSP symbol locations, hover/signature text, and short snippets.
+Treat that section as ground truth for how to call those helpers -- inputs,
+outputs, and names. Do not invent signatures that contradict it.
+
+That slice is the whole job. Do not plan a project, do not propose files you
+were not asked about, do not restructure code you cannot see.
 
 Write the code, then call emit_code exactly once.
 
@@ -113,12 +122,19 @@ function M.scope(buf, row)
     name = "[unnamed]"
   end
   local total = vim.api.nvim_buf_line_count(buf)
+  local ctx = require("qvd808.custom.ai.context")
 
-  -- rung 1: LSP document symbols. Not wired yet; when it is, it goes here and
-  -- falls through to treesitter exactly as treesitter falls through to whole.
+  -- rung 1: LSP document symbol enclosing the cursor
+  local sr, er, kind = ctx.document_scope(buf, row)
+  if sr then
+    local lines = vim.api.nvim_buf_get_lines(buf, sr, er + 1, false)
+    return ("=== %s lines %d-%d (%s) ===\n%s"):format(name, sr + 1, er + 1, kind,
+      table.concat(lines, "\n")),
+      ("%s:%d-%d via lsp (%s)"):format(name, sr + 1, er + 1, kind)
+  end
 
   -- rung 2: treesitter
-  local sr, er, kind = treesitter_scope(buf, row)
+  sr, er, kind = treesitter_scope(buf, row)
   if sr then
     local lines = vim.api.nvim_buf_get_lines(buf, sr, er + 1, false)
     return ("=== %s lines %d-%d (%s) ===\n%s"):format(name, sr + 1, er + 1, kind,
@@ -146,6 +162,22 @@ function M.scope(buf, row)
     ("%s:%d-%d cursor window"):format(name, from + 1, to)
 end
 
+--- Buffer slice plus related-symbol digest from the goal.
+function M.context_for(goal, buf, row)
+  local context, label = M.scope(buf, row)
+  local related, related_label = require("qvd808.custom.ai.context").enrich(goal, buf)
+  if related ~= "" then
+    if context ~= "" then
+      context = context .. "\n\n" .. related
+    else
+      context = related
+    end
+    label = label .. "; " .. related_label
+  elseif related_label and related_label ~= "" then
+    label = label .. "; " .. related_label
+  end
+  return context, label
+end
 -- ---------------------------------------------------------------------------
 -- Workflow
 -- ---------------------------------------------------------------------------
@@ -240,6 +272,60 @@ local function candidate_files()
   return out
 end
 
+--- Put `old_text` back when a buffer-backed verify failed, so the next attempt
+--- can still match the original `replaces` from the scoped context.
+local function revert(path, old_text, bad_code)
+  if old_text == nil then
+    return
+  end
+  if old_text == "" then
+    -- Pure append: strip the trailing block we just added.
+    local buf = vim.fn.bufadd(path)
+    vim.fn.bufload(buf)
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local bad = vim.split(bad_code or "", "\n")
+    local n = #bad
+    if n > 0 and #lines >= n then
+      local start = #lines - n + 1
+      local match = true
+      for i = 1, n do
+        if lines[start + i - 1] ~= bad[i] then
+          match = false
+          break
+        end
+      end
+      -- optional leading blank we may have inserted before the append
+      local from = start - 1
+      if match and from >= 1 and lines[from] == "" then
+        vim.api.nvim_buf_set_lines(buf, from - 1, #lines, false, {})
+      elseif match then
+        vim.api.nvim_buf_set_lines(buf, start - 1, #lines, false, {})
+      end
+    end
+    return
+  end
+  M.apply(path, bad_code, old_text)
+end
+
+local function format_status(mode, passed, report, n)
+  if passed == true then
+    local status = "verified: " .. mode
+    if report and report ~= "" and not report:match("^ok") then
+      status = status .. "\n\n```\n" .. report .. "\n```"
+      if mode == "run" or mode == "build" then
+        status = status .. "\n_exit code only -- check the output is actually right_"
+      end
+    elseif report and report:match("^ok") then
+      status = status .. " — " .. report
+    end
+    return status
+  end
+  if passed == false then
+    return ("FAILED after %d attempts (%s)\n\n```\n%s\n```"):format(n, mode, report)
+  end
+  return report -- not decidable: visual / none / toolchain missing
+end
+
 function M.run(goal, ctx, cb, preset)
   local verify = require("qvd808.custom.ai.verify")
   preset = preset or {}
@@ -251,9 +337,42 @@ function M.run(goal, ctx, cb, preset)
     row = vim.api.nvim_win_get_cursor(win)[1] - 1
   end
 
-  local context, label = M.scope(buf, row)
-
+  -- Filled once the destination is known: scope the target buffer and resolve
+  -- symbols named in the goal (grep + LSP) before the single model call.
+  local context, label = "", ""
   local totals = { calls = 0, in_tokens = 0, out_tokens = 0, ms = 0 }
+
+  local function finish(target_path, args, code, lang, status)
+    local D = require("qvd808.custom.ai.diff")
+    local text
+
+    if args._apply_failed then
+      text = ("could not apply: %s\n\n```%s\n%s\n```\n\n"):format(args._apply_failed, lang, code)
+    elseif verify.NEEDS_BUFFER[args._mode] then
+      -- Already in the buffer from the verify step.
+      text = D.render(args._old_text or "", code)
+        .. "\n\n" .. (args._apply_message or ("updated " .. target_path))
+        .. "  _(u to undo)_\n\n"
+    else
+      local applied, message, old_text = M.apply(target_path, args.replaces, code)
+      if applied then
+        text = D.render(old_text, code) .. "\n\n" .. message .. "  _(u to undo)_\n\n"
+      else
+        text = ("could not apply: %s\n\n```%s\n%s\n```\n\n"):format(message, lang, code)
+      end
+    end
+
+    if args.notes and args.notes ~= "" then
+      text = text .. args.notes .. "\n\n"
+    end
+    text = text .. status .. "\n\n_scope: " .. label .. "_"
+
+    cb(nil, {
+      text = text,
+      meta = ("%.1fs - %d call(s) - %d in / %d out tok"):format(
+        totals.ms / 1000, totals.calls, totals.in_tokens, totals.out_tokens),
+    })
+  end
 
   -- One attempt. Deliberately builds a *fresh* message list every time: the
   -- retry carries the previous code and the failure, not a growing transcript.
@@ -294,74 +413,81 @@ function M.run(goal, ctx, cb, preset)
 
       local code = vim.trim(args.code)
       local lang = args.language or ft
+      args._mode = mode
+
+      local function on_verify(passed, report)
+        if passed == false and n < MAX_ATTEMPTS then
+          ctx.on_step("verify", ("failed, retrying (%d/%d)"):format(n + 1, MAX_ATTEMPTS))
+          return attempt(n + 1, target_path, mode, command, code, report)
+        end
+        finish(target_path, args, code, lang, format_status(mode, passed, report, n))
+      end
+
+      -- LSP/lint need the edit in the real buffer before diagnostics refresh.
+      if verify.NEEDS_BUFFER[mode] then
+        local applied, message, old_text = M.apply(target_path, args.replaces, code)
+        if not applied then
+          if n < MAX_ATTEMPTS then
+            ctx.on_step("verify", ("apply failed, retrying (%d/%d)"):format(n + 1, MAX_ATTEMPTS))
+            return attempt(n + 1, target_path, mode, command, code, message)
+          end
+          args._apply_failed = message
+          return finish(target_path, args, code, lang,
+            format_status(mode, false, "could not apply: " .. message, n))
+        end
+        args._old_text = old_text
+        args._apply_message = message
+
+        local bufnr = verify.buf_for(target_path)
+        ctx.on_step("verify", mode)
+        return verify.run({
+          mode = mode, ft = ft, code = code, command = command, bufnr = bufnr,
+        }, function(passed, report)
+          if passed == false and n < MAX_ATTEMPTS then
+            revert(target_path, old_text, code)
+          end
+          on_verify(passed, report)
+        end)
+      end
 
       ctx.on_step("verify", mode)
-      verify.run({ mode = mode, ft = ft, code = code, command = command },
-        function(passed, report)
-          if passed == false and n < MAX_ATTEMPTS then
-            ctx.on_step("verify", ("failed, retrying (%d/%d)"):format(n + 1, MAX_ATTEMPTS))
-            return attempt(n + 1, target_path, mode, command, code, report)
-          end
-
-          local status
-          if passed == true then
-            -- `run` and `build` only prove it did not crash. Show the output so
-            -- the reader can judge correctness -- exit 0 on wrong output is
-            -- still a pass here, and pretending otherwise would be worse.
-            status = "verified: " .. mode
-            if report and report ~= "" and report ~= "ok" then
-              status = status .. "\n\n```\n" .. report .. "\n```"
-              if mode ~= "test" then
-                status = status .. "\n_exit code only -- check the output is actually right_"
-              end
-            end
-          elseif passed == false then
-            status = ("FAILED after %d attempts (%s)\n\n```\n%s\n```"):format(n, mode, report)
-          else
-            status = report -- not decidable here: visual / none / no toolchain
-          end
-
-          -- Apply through the buffer, then show both complete states.
-          local applied, message, old_text = M.apply(target_path, args.replaces, code)
-          local D = require("qvd808.custom.ai.diff")
-
-          local text
-          if applied then
-            text = D.render(old_text, code) .. "\n\n" .. message .. "  _(u to undo)_\n\n"
-          else
-            text = ("could not apply: %s\n\n```%s\n%s\n```\n\n"):format(message, lang, code)
-          end
-          if args.notes and args.notes ~= "" then
-            text = text .. args.notes .. "\n\n"
-          end
-          text = text .. status .. "\n\n_scope: " .. label .. "_"
-
-          cb(nil, {
-            text = text,
-            meta = ("%.1fs - %d call(s) - %d in / %d out tok"):format(
-              totals.ms / 1000, totals.calls, totals.in_tokens, totals.out_tokens),
-          })
-        end)
+      verify.run({ mode = mode, ft = ft, code = code, command = command }, on_verify)
     end)
   end
 
-  -- Verification strategy is the user's decision: only they know whether
-  -- "correct" means it compiles, runs, passes a suite, or looks right.
-  ctx.on_step("scope", label)
+  local function start(target_path, mode, command)
+    local target_buf = verify.buf_for(target_path)
+    if target_buf and (ft == nil or ft == "") then
+      ft = vim.bo[target_buf].filetype or ft
+    end
+    -- Prefer the destination buffer for scope + LSP; fall back to the visible one.
+    local scope_buf = target_buf or buf
+    local scope_row = (scope_buf == buf) and row or 0
+    ctx.on_step("scope", "resolving symbols")
+    context, label = M.context_for(goal, scope_buf, scope_row)
+    ctx.on_step("scope", label)
+    attempt(1, target_path, mode, command, nil, nil)
+  end
 
   local function ask_verification(target_path)
-    local choices = verify.choices(ft)
-    ctx.ask(("How should I verify this? (filetype: %s)"):format(ft ~= "" and ft or "unknown"),
-      choices, function(picked)
-        local mode = picked and picked.id or "none"
-        if mode == "test" or mode == "visual" then
-          local q = mode == "test" and "Test command to run?" or "Command that starts it?"
-          return ctx.ask(q, nil, function(_, answer)
-            attempt(1, target_path, mode, answer, nil, nil)
-          end)
-        end
-        attempt(1, target_path, mode, nil, nil, nil)
-      end)
+    local target_buf = verify.buf_for(target_path)
+    if target_buf and (ft == nil or ft == "") then
+      ft = vim.bo[target_buf].filetype or ft
+    end
+    local choices = verify.choices(ft, target_buf)
+    local status = verify.status_line(ft, target_buf)
+    local q = ("How should I verify this? (filetype: %s)\n%s"):format(
+      ft ~= "" and ft or "unknown", status)
+    ctx.ask(q, choices, function(picked)
+      local mode = picked and picked.id or "none"
+      if mode == "test" or mode == "visual" then
+        local prompt = mode == "test" and "Test command to run?" or "Command that starts it?"
+        return ctx.ask(prompt, nil, function(_, answer)
+          start(target_path, mode, answer)
+        end)
+      end
+      start(target_path, mode, nil)
+    end)
   end
 
   -- Which file the code lands in is a decision, not an inference.

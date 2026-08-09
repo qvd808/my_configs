@@ -79,10 +79,18 @@ M.register({
 
 M.register({
   name = "write",
-  description = "Write code for the buffer you are in. One call, no project survey",
+  description = "Write code for the buffer you are in; verify with run/build/test/LSP/lint",
   prompt = "What should I write?",
   run = function(goal, ctx, cb)
     require("qvd808.custom.ai.write").run(goal, ctx, cb)
+  end,
+})
+
+M.register({
+  name = "graph",
+  description = "LSP call hierarchy → Graphviz; view in browser or terminal",
+  run = function(arg, ctx, cb)
+    require("qvd808.custom.ai.graph").run(arg, ctx, cb)
   end,
 })
 

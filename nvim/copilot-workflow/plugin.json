@@ -1,0 +1,6 @@
+{
+  "name": "nvim-workflow",
+  "version": "0.1.0",
+  "description": "Reviewable work units for the Neovim Copilot chat",
+  "hooks": "hooks.json"
+}

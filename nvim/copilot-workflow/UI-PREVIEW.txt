@@ -1,0 +1,90 @@
+Rendered previews (colors omitted)
+
+Width 104
+Copilot workflow
+Ticket UI
+
+╭─ GATE · move to the next state? ─────────────────────────────────────────────────────────────────────╮
+│ Ready                                                                                                │
+│                                                                                                      │
+│ [a] accept        [d] decline, then talk it through in chat                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+Tickets · Enter cycles selection
+╭▸u1 ◆ ──────────╮
+│ Redesign tick… │
+│ ▱▱▱▱▱▱         │
+╰────────────────╯
+
+Ticket u1 · Redesign ticket UI
+Status: awaiting_review · Attempt 1 · Tasks 0/0
+
+Workflow · awaiting_review
+╭──────────────╮    ╭──────────────╮    ╭──────────────╮    ╭──────────────╮    ╭──────────────╮
+│   Planning   │ ─▶ │ Approve plan │ ─▶ │   Working    │ ─▶ │    Review    │ ─▶ │   Accepted   │
+╰──────────────╯    ╰──────────────╯    ╰──────────────╯    ╰──────────────╯    ╰──────────────╯
+        ▲                                                           │
+        ╰─ decline to planning ─────────────────────────────────────╯
+Question → Decision → answer → Working
+Working → Paused → resume → Working
+
+Problem: Make progress easy to follow
+Summary: Ready
+
+a accept · d decline
+N new ticket · L list · o chat · ⏎ select unit · q close
+Width 40
+Copilot workflow
+Ticket UI
+
+╭─ GATE · move to the next state? ─────╮
+│ Ready                                │
+│                                      │
+│ [a] accept        [d] decline, then  │
+│ talk it through in chat              │
+╰──────────────────────────────────────╯
+
+Tickets · Enter cycles selection
+╭▸u1 ◆ ──────────╮
+│ Redesign tick… │
+│ ▱▱▱▱▱▱         │
+╰────────────────╯
+
+Ticket u1 · Redesign ticket UI
+Status: awaiting_review · Attempt 1 · Ta
+sks 0/0
+
+Workflow · awaiting_review
+╭────────────────────╮
+│      Planning      │
+╰────────────────────╯
+  │ propose
+  ▼
+╭────────────────────╮
+│    Approve plan    │
+╰────────────────────╯
+  │ approve
+  ▼
+╭────────────────────╮
+│      Working       │
+╰────────────────────╯
+  │ ready
+  ▼
+╭────────────────────╮
+│       Review       │
+╰────────────────────╯
+  │ accept
+  ▼
+╭────────────────────╮
+│      Accepted      │
+╰────────────────────╯
+Decline: approval/review → Planning
+Question → Decision → answer → Working
+Working → Paused → resume → Working
+
+Problem: Make progress easy to follow
+Summary: Ready
+
+a accept · d decline
+N new ticket · L list · o chat · ⏎ selec
+t unit · q close

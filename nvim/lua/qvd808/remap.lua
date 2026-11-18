@@ -3,6 +3,7 @@ vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<CR>")
 
 -- Shift line around for indenting
 local opt_shift = { noremap = true, silent = true }
+
 vim.keymap.set("i", "<S-Tab>", "<cmd>:<<CR>", opt_shift)
 vim.keymap.set("n", "<S-Tab>", "<<", opt_shift)
 vim.keymap.set("n", "<Tab>", ">>", opt_shift)
@@ -10,175 +11,197 @@ vim.keymap.set("v", "<S-Tab>", "<gv", opt_shift)
 vim.keymap.set("v", "<Tab>", ">gv", opt_shift)
 
 -- Open file
-vim.keymap.set("n", "<leader><leader>", vim.cmd.Ex)
+vim.keymap.set("n", "<space><space>", ":Oil<CR>")
 
 -- Move to different window
-vim.keymap.set("t", "<C-x>", "<C-\\><C-n>")
-vim.keymap.set("n", "<C-j>", "<C-w><C-j>")
-vim.keymap.set("n", "<C-k>", "<C-w><C-k>")
-vim.keymap.set("n", "<C-l>", "<C-w><C-l>")
-vim.keymap.set("n", "<C-h>", "<C-w><C-h>")
+-- vim.keymap.set("t", "<C-x>", "<C-\\><C-n>")
+-- vim.keymap.set("n", "<C-j>", "<C-w><C-j>")
+-- vim.keymap.set("n", "<C-k>", "<C-w><C-k>")
+-- vim.keymap.set("n", "<C-l>", "<C-w><C-l>")
+-- vim.keymap.set("n", "<C-h>", "<C-w><C-h>")
 
--- Diagnostic keymaps
-vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, { desc = "Go to previous [D]iagnostic message" })
-vim.keymap.set("n", "]d", vim.diagnostic.goto_next, { desc = "Go to next [D]iagnostic message" })
-vim.keymap.set("n", "<leader>e", vim.diagnostic.open_float, { desc = "Show diagnostic [E]rror message" })
-vim.keymap.set("n", "[<leader>q", vim.diagnostic.goto_prev, { desc = "Open diagnostic [Q]uickfix list" })
+-- Quick fix
+vim.keymap.set("n", "<M-j>", "<cmd>cnext<CR>")
+vim.keymap.set("n", "<M-k>", "<cmd>cprevious<CR>")
+vim.api.nvim_set_keymap("n", "<C-q>", [[:lua CloseQuickfixOrFallback()<CR>]], { noremap = true, silent = true })
 
--- Quickfix keymaps
-vim.keymap.set("n", "<c-n>", ":cn<CR>")
-vim.keymap.set("n", "<c-m>", ":cp<CR>")
+function CloseQuickfixOrFallback()
+  local win_info = vim.fn.getwininfo(vim.fn.win_getid())[1]
+  if win_info.quickfix ~= nil then
+    vim.cmd("cclose") -- Close the quickfix window
+  else
+    -- fall back to default
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<C-q>", true, true, true), "n", true)
+  end
+end
 
 -- Wrap word around
+
 -- Support function
 function WrapLineInChar(char)
-	-- Get the current line
-	local line = vim.api.nvim_get_current_line():gsub("^%s*(.-)%s*$", "%1")
+  -- Get the current line
+  local line = vim.api.nvim_get_current_line():gsub("^%s*(.-)%s*$", "%1")
 
-	-- Wrap the line in double quotes
-	local wrapped_line = char .. line .. char
+  -- Wrap the line in double quotes
+  local wrapped_line = char .. line .. char
 
-	-- Set the new line with quotes
-	vim.api.nvim_set_current_line(wrapped_line)
+  -- Set the new line with quotes
+  vim.api.nvim_set_current_line(wrapped_line)
 end
+
 -- Double quotes
 vim.api.nvim_set_keymap(
-	"n",
-	'"iw',
-	'ciw"<esc>pa"<esc>',
-	{ noremap = true, silent = true, desc = "Word Surround Double Quotes" }
+  "n",
+  '"iw',
+  'ciw"<esc>pa"<esc>',
+  { noremap = true, silent = true, desc = "Word Surround Double Quotes" }
 )
 vim.api.nvim_set_keymap(
-	"n",
-	'""',
-	[[:lua WrapLineInChar("\"")<CR>]],
-	{ noremap = true, silent = true, desc = "Wrap line in given character" }
+  "n",
+  '""',
+  [[:lua WrapLineInChar("\"")<CR>]],
+  { noremap = true, silent = true, desc = "Wrap line in given character" }
 )
 vim.api.nvim_set_keymap(
-	"n",
-	'"iW',
-	'ciW"<esc>pa"<esc>',
-	{ noremap = true, silent = true, desc = "Word Surround Double Quotes" }
+  "n",
+  '"iW',
+  'ciW"<esc>pa"<esc>',
+  { noremap = true, silent = true, desc = "Word Surround Double Quotes" }
 )
 -- Single quotes
 vim.api.nvim_set_keymap(
-	"n",
-	"''",
-	[[:lua WrapLineInChar("\'")<CR>]],
-	{ noremap = true, silent = true, desc = "Wrap line in given character" }
+  "n",
+  "''",
+  [[:lua WrapLineInChar("\'")<CR>]],
+  { noremap = true, silent = true, desc = "Wrap line in given character" }
 )
 vim.api.nvim_set_keymap(
-	"n",
-	"'iW",
-	"ciW'<esc>pa'<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround Double Quotes" }
+  "n",
+  "'iW",
+  "ciW'<esc>pa'<esc>",
+  { noremap = true, silent = true, desc = "Word Surround Double Quotes" }
 )
 vim.api.nvim_set_keymap(
-	"n",
-	"'iw",
-	"ciw'<esc>pa'<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround Single Quotes" }
-)
--- Bracket quotes
-vim.api.nvim_set_keymap(
-	"n",
-	"(iw",
-	"ciw(<esc>pa)<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround bracket" }
-)
-vim.api.nvim_set_keymap(
-	"n",
-	")iw",
-	"ciw(<esc>pa)<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround bracket" }
-)
--- Square Bracket quotes
-vim.api.nvim_set_keymap(
-	"n",
-	"[iw",
-	"ciw[<esc>pa]<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround Square bracket" }
-)
-vim.api.nvim_set_keymap(
-	"n",
-	"]iw",
-	"ciw[<esc>pa]<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround Square bracket" }
-)
--- Curly Bracket quotes
-vim.api.nvim_set_keymap(
-	"n",
-	"{iw",
-	"ciw{<esc>pa}<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround Curly Bracket" }
-)
-vim.api.nvim_set_keymap(
-	"n",
-	"}iw",
-	"ciw{<esc>pa}<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround Curly bracket" }
-)
-vim.api.nvim_set_keymap(
-	"n",
-	"'iw",
-	"ciw'<esc>pa'<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround Single Quotes" }
+  "n",
+  "'iw",
+  "ciw'<esc>pa'<esc>",
+  { noremap = true, silent = true, desc = "Word Surround Single Quotes" }
 )
 -- Bracket quotes
 vim.api.nvim_set_keymap(
-	"n",
-	"(iw",
-	"ciw(<esc>pa)<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround bracket" }
+  "n",
+  "(iw",
+  "ciw(<esc>pa)<esc>",
+  { noremap = true, silent = true, desc = "Word Surround bracket" }
 )
 vim.api.nvim_set_keymap(
-	"n",
-	")iw",
-	"ciw(<esc>pa)<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround bracket" }
+  "n",
+  ")iw",
+  "ciw(<esc>pa)<esc>",
+  { noremap = true, silent = true, desc = "Word Surround bracket" }
 )
 -- Square Bracket quotes
 vim.api.nvim_set_keymap(
-	"n",
-	"[iw",
-	"ciw[<esc>pa]<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround Square bracket" }
+  "n",
+  "[iw",
+  "ciw[<esc>pa]<esc>",
+  { noremap = true, silent = true, desc = "Word Surround Square bracket" }
 )
 vim.api.nvim_set_keymap(
-	"n",
-	"]iw",
-	"ciw[<esc>pa]<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround Square bracket" }
+  "n",
+  "]iw",
+  "ciw[<esc>pa]<esc>",
+  { noremap = true, silent = true, desc = "Word Surround Square bracket" }
 )
 -- Curly Bracket quotes
 vim.api.nvim_set_keymap(
-	"n",
-	"{iw",
-	"ciw{<esc>pa}<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround Curly Bracket" }
+  "n",
+  "{iw",
+  "ciw{<esc>pa}<esc>",
+  { noremap = true, silent = true, desc = "Word Surround Curly Bracket" }
 )
 vim.api.nvim_set_keymap(
-	"n",
-	"}iw",
-	"ciw{<esc>pa}<esc>",
-	{ noremap = true, silent = true, desc = "Word Surround Curly bracket" }
+  "n",
+  "}iw",
+  "ciw{<esc>pa}<esc>",
+  { noremap = true, silent = true, desc = "Word Surround Curly bracket" }
+)
+vim.api.nvim_set_keymap(
+  "n",
+  "'iw",
+  "ciw'<esc>pa'<esc>",
+  { noremap = true, silent = true, desc = "Word Surround Single Quotes" }
+)
+-- Bracket quotes
+vim.api.nvim_set_keymap(
+  "n",
+  "(iw",
+  "ciw(<esc>pa)<esc>",
+  { noremap = true, silent = true, desc = "Word Surround bracket" }
+)
+vim.api.nvim_set_keymap(
+  "n",
+  ")iw",
+  "ciw(<esc>pa)<esc>",
+  { noremap = true, silent = true, desc = "Word Surround bracket" }
+)
+-- Square Bracket quotes
+vim.api.nvim_set_keymap(
+  "n",
+  "[iw",
+  "ciw[<esc>pa]<esc>",
+  { noremap = true, silent = true, desc = "Word Surround Square bracket" }
+)
+vim.api.nvim_set_keymap(
+  "n",
+  "]iw",
+  "ciw[<esc>pa]<esc>",
+  { noremap = true, silent = true, desc = "Word Surround Square bracket" }
+)
+-- Curly Bracket quotes
+vim.api.nvim_set_keymap(
+  "n",
+  "{iw",
+  "ciw{<esc>pa}<esc>",
+  { noremap = true, silent = true, desc = "Word Surround Curly Bracket" }
+)
+vim.api.nvim_set_keymap(
+  "n",
+  "}iw",
+  "ciw{<esc>pa}<esc>",
+  { noremap = true, silent = true, desc = "Word Surround Curly bracket" }
 )
 -- API for tmux split pane
 -- Remap :vs to trigger tmux vertical split
-vim.api.nvim_command('command! Vs lua TmuxSplit("v")')
-vim.api.nvim_set_keymap('n', ':vs', ':lua TmuxSplit("v")<CR>', { noremap = true, silent = true })
-vim.api.nvim_set_keymap('n', ':hs', ':lua TmuxSplit("h")<CR>', { noremap = true, silent = true })
+-- vim.api.nvim_command('command! Vs lua TmuxSplit("v")')
+-- vim.api.nvim_set_keymap('n', ':vs', ':lua TmuxSplit("v")<CR>', { noremap = true, silent = true })
+-- vim.api.nvim_set_keymap('n', ':hs', ':lua TmuxSplit("h")<CR>', { noremap = true, silent = true })
+--
+-- function TmuxSplit(type)
+--   -- Check if we're inside a tmux session
+--   if os.getenv('TMUX') then
+--     if type == 'v' then
+--       vim.fn.system('tmux split-window -h')
+--     elseif type == 'h' then
+--       vim.fn.system('tmux split-window -v')
+--     end
+--   else
+--     -- If not in tmux, fall back to normal Neovim split
+--     vim.cmd('vsp')
+--   end
+-- end
+--
+vim.keymap.set("n", "gx", function()
+  local url = vim.fn.expand("<cfile>")
 
-function TmuxSplit(type)
-  -- Check if we're inside a tmux session
-  if os.getenv('TMUX') then
-    if type == 'v' then
-      vim.fn.system('tmux split-window -h')
-    elseif type == 'h' then
-      vim.fn.system('tmux split-window -v')
-    end
-  else
-    -- If not in tmux, fall back to normal Neovim split
-    vim.cmd('vsp')
+  if url == "" or not url:match("^https?://") then
+    vim.notify("No URL found under cursor", vim.log.levels.WARN)
+    return
   end
-end
+
+  vim.fn.jobstart({ "explorer.exe", url }, {
+    detach = true,
+  })
+end, {
+  desc = "Open URL in Windows browser",
+})

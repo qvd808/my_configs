@@ -1,0 +1,210 @@
+{
+  "runtime": [
+    {
+      "command": "node",
+      "purpose": "Shared gate and installer",
+      "install": "Install Node.js 20 or newer",
+      "minimumVersion": "20.0.0",
+      "probe": [
+        "--version"
+      ]
+    },
+    {
+      "command": "git",
+      "purpose": "Repository tools",
+      "install": "sudo apt-get install git"
+    },
+    {
+      "command": "zenity",
+      "probe": [
+        "--version"
+      ],
+      "purpose": "Approval phrase dialog",
+      "install": "sudo apt-get install zenity (Debian/Ubuntu); sudo dnf install zenity (Fedora); sudo pacman -S zenity (Arch)"
+    }
+  ],
+  "optional": [
+    {
+      "command": "tmux",
+      "purpose": "Terminal configuration"
+    },
+    {
+      "command": "codex",
+      "purpose": "Codex native hooks / codex-acp"
+    },
+    {
+      "command": "copilot",
+      "purpose": "Copilot native hooks / ACP"
+    },
+    {
+      "command": "claude",
+      "purpose": "Claude Code native hooks"
+    }
+  ],
+  "integrationTests": [
+    {
+      "command": "Xvfb",
+      "purpose": "Isolated display for the real Zenity test"
+    },
+    {
+      "command": "xdotool",
+      "purpose": "Find and answer the test dialog"
+    }
+  ],
+  "neovim": [
+    {
+      "command": "nvim",
+      "minimumVersion": "0.11.0",
+      "probe": [
+        "--version"
+      ],
+      "purpose": "Editor; config uses vim.lsp.config and vim.lsp.enable",
+      "install": "Install Neovim 0.11 or newer"
+    },
+    {
+      "command": "rg",
+      "purpose": "Telescope live_grep / grep_string",
+      "install": "sudo apt-get install ripgrep"
+    },
+    {
+      "command": "make",
+      "purpose": "Build telescope-fzf-native",
+      "install": "sudo apt-get install build-essential"
+    },
+    {
+      "anyOf": [
+        "cc",
+        "gcc",
+        "clang"
+      ],
+      "purpose": "C compiler for telescope-fzf-native and Tree-sitter parsers",
+      "install": "sudo apt-get install build-essential"
+    },
+    {
+      "anyOf": [
+        "curl",
+        "wget"
+      ],
+      "purpose": "Download tools and Tree-sitter parser sources",
+      "install": "sudo apt-get install curl"
+    },
+    {
+      "command": "tar",
+      "purpose": "Unpack Tree-sitter sources and tool archives",
+      "install": "sudo apt-get install tar"
+    },
+    {
+      "command": "gzip",
+      "purpose": "Unpack compressed source/tool archives",
+      "install": "sudo apt-get install gzip"
+    },
+    {
+      "command": "unzip",
+      "purpose": "Unpack Mason tool downloads",
+      "install": "sudo apt-get install unzip"
+    },
+    {
+      "command": "npm",
+      "purpose": "Install Node-based Mason servers, including pyright",
+      "install": "Install npm alongside Node.js"
+    },
+    {
+      "command": "python3",
+      "purpose": "Copilot session-title helper and Python tooling",
+      "install": "sudo apt-get install python3 python3-venv"
+    },
+    {
+      "anyOf": [
+        "fd",
+        "find"
+      ],
+      "purpose": "SearchCompileCommands uses fd, with find as fallback",
+      "install": "sudo apt-get install findutils"
+    }
+  ],
+  "neovimOptional": [
+    {
+      "anyOf": [
+        "fd",
+        "fdfind"
+      ],
+      "purpose": "Faster Telescope file discovery; fd is also used by SearchCompileCommands when available",
+      "install": "sudo apt-get install fd-find (Ubuntu names the executable fdfind)"
+    },
+    {
+      "command": "pylint",
+      "purpose": "Configured Python linter (nvim-lint)",
+      "install": "Install pylint in your Python environment, or via Mason",
+      "managedBy": "mason"
+    },
+    {
+      "command": "go",
+      "purpose": "Go projects and installing/updating gopls",
+      "install": "Install a Go toolchain for Go development"
+    },
+    {
+      "command": "cargo",
+      "purpose": "Rust projects and tool installation",
+      "install": "Install a Rust toolchain for Rust development"
+    },
+    {
+      "command": "rustc",
+      "purpose": "Rust compilation",
+      "install": "Install a Rust toolchain for Rust development"
+    },
+    {
+      "command": "wl-copy",
+      "purpose": "Wayland clipboard copy (requires wl-paste for paste)",
+      "install": "sudo apt-get install wl-clipboard"
+    },
+    {
+      "command": "wl-paste",
+      "purpose": "Wayland clipboard paste",
+      "install": "sudo apt-get install wl-clipboard"
+    },
+    {
+      "anyOf": [
+        "xsel",
+        "xclip"
+      ],
+      "purpose": "X11 clipboard; tmux explicitly uses xsel or xclip",
+      "install": "sudo apt-get install xclip"
+    },
+    {
+      "command": "explorer.exe",
+      "purpose": "Windows/WSL browser mapping (gx); unavailable on ordinary Linux is expected"
+    }
+  ],
+  "languageServers": [
+    {
+      "command": "lua-language-server",
+      "managedBy": "mason",
+      "purpose": "Lua (lua_ls)",
+      "install": "Open :Mason in Neovim; configured servers are requested automatically"
+    },
+    {
+      "command": "pyright-langserver",
+      "managedBy": "mason",
+      "purpose": "Python (pyright)",
+      "install": "Open :Mason in Neovim; configured servers are requested automatically"
+    },
+    {
+      "command": "clangd",
+      "managedBy": "mason",
+      "purpose": "C/C++",
+      "install": "Open :Mason in Neovim; configured servers are requested automatically"
+    },
+    {
+      "command": "gopls",
+      "managedBy": "mason",
+      "purpose": "Go",
+      "install": "Open :Mason in Neovim; configured servers are requested automatically"
+    },
+    {
+      "command": "rust-analyzer",
+      "managedBy": "mason",
+      "purpose": "Rust",
+      "install": "Open :Mason in Neovim; configured servers are requested automatically"
+    }
+  ]
+}

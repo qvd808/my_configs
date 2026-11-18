@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "hooks": {
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "node \"$HOME/.agent/hooks/write-gate.mjs\" prompt --agent=copilot",
+        "timeoutSec": 10
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "node \"$HOME/.agent/hooks/write-gate.mjs\" tool --agent=copilot",
+        "timeoutSec": 100
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "node \"$HOME/.agent/hooks/write-gate.mjs\" done --agent=copilot",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

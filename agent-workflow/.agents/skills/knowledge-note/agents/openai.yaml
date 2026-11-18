@@ -1,0 +1,5 @@
+interface:
+  display_name: "Knowledge Note"
+  short_description: "Order an explanation note by its dependency graph"
+policy:
+  allow_implicit_invocation: true

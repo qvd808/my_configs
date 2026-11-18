@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "exec node \"${COPILOT_PLUGIN_ROOT}/runtime.mjs\" hook start",
+        "timeoutSec": 5
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "exec node \"${COPILOT_PLUGIN_ROOT}/runtime.mjs\" hook pre",
+        "timeoutSec": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "exec node \"${COPILOT_PLUGIN_ROOT}/runtime.mjs\" hook post",
+        "timeoutSec": 5
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "type": "command",
+        "bash": "exec node \"${COPILOT_PLUGIN_ROOT}/runtime.mjs\" hook failure",
+        "timeoutSec": 5
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "exec node \"${COPILOT_PLUGIN_ROOT}/runtime.mjs\" hook stop",
+        "timeoutSec": 5
+      }
+    ],
+    "subagentStop": [
+      {
+        "type": "command",
+        "bash": "exec node \"${COPILOT_PLUGIN_ROOT}/runtime.mjs\" hook child-stop",
+        "timeoutSec": 5
+      }
+    ]
+  }
+}
